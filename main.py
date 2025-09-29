@@ -38,8 +38,6 @@ filtered_jobs_file = "filtreradeJobb.csv"
 expired_jobs_file = "gamlaJobb.csv"
 last_run_file = "last_run.txt"
 
-#bad_keywords = {"Personlig assistent", "Präst", "unpaid"}
-
 trainee_file = "Trainee.csv"
 trainee_fields = fields.copy()
 
@@ -264,11 +262,9 @@ if __name__ == "__main__":
 
     fetch_jobs(default_params, all_jobs_file, fields, fetch_all=args.all)
     filter_jobs(all_jobs_file, filtered_jobs_file, bad_keywords, fields)
-    # Filtrerade jobb (bad_keywords tas bort lokalt)
-    # Vi kan återanvända samma fetch men filtrera efter headline
-    # Alternativt gör du ett separat fetch_jobs med filter efter headline
 
-    # Trainee-jobb
+
+
     fetch_jobs(trainee_params, trainee_file, fields, fetch_all=args.all)
     
     print("Klar!")
