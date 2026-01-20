@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Job Search</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; }
+h2 { margin-top: 30px; }
+.checkbox-group { margin-bottom: 10px; }
+table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+th { background-color: #f0f0f0; }
+button { margin-top: 10px; }
+.job-detail { border: 1px solid #aaa; padding: 10px; margin-top: 20px; }
+textarea { width: 100%; height: 120px; margin-top: 5px; }
+</style>
+</head>
+<body>
+
+<h1>Job Search</h1>
+
+<div>
+    <h3>Locations</h3>
+    <div id="locations" class="checkbox-group"></div>
+</div>
+
+<div>
+    <h3>Job Titles / Keywords</h3>
+    <div id="jobTitles" class="checkbox-group"></div>
+</div>
+
+<div>
+    <button id="searchBtn">Search Jobs</button>
+</div>
+
+<h2>Search Results</h2>
+<table id="resultsTable">
+    <thead>
+        <tr>
+            <th>Select</th>
+            <th>Headline</th>
+            <th>Employer</th>
+            <th>Municipality</th>
+            <th>Deadline</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<button id="moveToReviewBtn">Move Selected to Review</button>
+
+<h2>Review List</h2>
+<table id="reviewTable">
+    <thead>
+        <tr>
+            <th>Headline</th>
+            <th>Employer</th>
+            <th>Municipality</th>
+            <th>Deadline</th>
+            <th>View Job</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<div id="jobDetailView" class="job-detail" style="display:none;">
+    <h3 id="detailHeadline"></h3>
+    <p><strong>Employer:</strong> <span id="detailEmployer"></span></p>
+    <p><strong>Municipality:</strong> <span id="detailMunicipality"></span></p>
+    <p><strong>Deadline:</strong> <span id="detailDeadline"></span></p>
+    <p><strong>Description:</strong></p>
+    <textarea id="detailDescription" readonly></textarea>
+    <p><strong>AI Prompt:</strong></p>
+    <textarea id="aiPrompt"></textarea>
+    <button id="copyPromptBtn">Copy Prompt</button>
+</div>
+
+<script>
+const regionsList = [
+    "Dalarna", "Ostergotland", "Orebro", "Jonkoping", "Sodermanlan", "Vastmanland", "Gavleborg"
+];
+
+const jobTitlesList = [
+    "ekonom", "ekonomi", "strateg", "verksamhetsutvecklare"
+];
+
+let searchResults = [];
+let reviewList = [];
+
+// Render checklists dynamically
+function renderChecklists() {
+    const locContainer = document.getElementById("locations");
+    regionsList.forEach(region => {
+        const id = `region_${region}`;
+        locContainer.innerHTML += `
+            <label><input type="checkbox" id="${id}" value="${region}" checked> ${region}</label>
+        `;
+    });
+
+    const jobContainer = document.getElementById("jobTitles");
+    jobTitlesList.forEach(title => {
+        const id = `job_${title}`;
+        jobContainer.innerHTML += `
+            <label><input type="checkbox" id="${id}" value="${title}" checked> ${title}</label>
+        `;
+    });
+}
+
+// Collect selected regions
+function getSelectedRegions() {
+    return Array.from(document.querySelectorAll("#locations input[type=checkbox]:checked"))
+                .map(cb => cb.value);
+}
+
+// Collect selected job titles / keywords
+function getSelectedJobTitles() {
+    return Array.from(document.querySelectorAll("#jobTitles input[type=checkbox]:checked"))
+                .map(cb => cb.value);
+}
+
+// Render tables
+function renderResults() {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+    searchResults.forEach((job, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td><input type="checkbox" data-index="${idx}"></td>
+            <td>${job.headline}</td>
+            <td>${job.employer_name}</td>
+            <td>${job.municipality}</td>
+            <td>${job.application_deadline_simple}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function renderReview() {
+    const tbody = document.querySelector("#reviewTable tbody");
+    tbody.innerHTML = "";
+    reviewList.forEach((job, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${job.headline}</td>
+            <td>${job.employer_name}</td>
+            <td>${job.municipality}</td>
+            <td>${job.application_deadline_simple}</td>
+            <td><button data-index="${idx}" class="viewJobBtn">View</button></td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    document.querySelectorAll(".viewJobBtn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const idx = btn.dataset.index;
+            showJobDetail(reviewList[idx]);
+        });
+    });
+}
+
+function showJobDetail(job) {
+    document.getElementById("jobDetailView").style.display = "block";
+    document.getElementById("detailHeadline").textContent = job.headline;
+    document.getElementById("detailEmployer").textContent = job.employer_name;
+    document.getElementById("detailMunicipality").textContent = job.municipality;
+    document.getElementById("detailDeadline").textContent = job.application_deadline_simple;
+    document.getElementById("detailDescription").value = job.description || "";
+    document.getElementById("aiPrompt").value = `Jag kommer ge instruktion i första stycket. Sedan följer mitt personliga brev och efter det kommer en annons. Jag vill att du skriver om mitt personliga brev på ett sätt så att det jag skrivit i det personliga brevet framlyfts för att svara på annonsen. Jag vill inte ha en argumenterande text, jag vill inte ha någon annan retorisk effekt annan än den jag skriver och jag vill bara ha ett personligt brev. Ingen kommunikation mot mig.
+
+
+Hej,
+
+Mitt namn är Filip Erkers Lindberg och jag söker en tjänst inom ekonomi eller administration. Med en akademisk bakgrund i nationalekonomi, viss praktisk erfarenhet av redovisning och ett stort intresse för siffror och analys känner jag att jag kan bidra positivt i en ekonomirelaterad eller administrativ roll.
+
+Jag har en kandidatexamen i ekonomi från Högskolan Dalarna och en masterexamen i nationalekonomi från Linköpings universitet med inriktning mot ekonomisk analys. Under min utbildning har jag utvecklat ett analytiskt och strukturerat arbetssätt, och fördjupat mig i områden som ekonometri och samhällsekonomiska kalkyler. Jag tycker genuint att det är roligt att arbeta med data, resonera kring siffror och förstå ekonomiska samband.
+
+Sedan 2019 har jag även hjälpt en enskild företagare med bokföring och deklarationer. Det har gett mig praktisk förståelse för redovisningsarbete, även om jag är medveten om att det finns mycket mer att lära och att större organisationer kan arbeta på andra sätt.
+
+Jag har lite erfarenhet från kommunal verksamhet från arbetsträning där jag arbetade med dokumenthantering, arkivering och uppföljning av ärenden. I rollen ingick kontakt med både företag och privatpersoner, vilket gav mig god insikt i vad det innebär att arbeta serviceinriktat i en offentlig miljö. 
+
+Som person är jag lyhörd, samarbetsinriktad och tålmodig. Jag värdesätter tydlig kommunikation och anser att det är viktigt att alla inblandade; medborgare, kollegor och beslutsfattare förstår vad olika beslut innebär. Jag har lätt för att förklara ekonomiska samband på ett pedagogiskt sätt och tycker om att bidra till andras förståelse. Jag är också självlärande och nyfiken. Just nu arbetar jag exempelvis med ett projekt som automatiserar exporten av digitala kvitton till kalkylark samt ett script som hämtar och sorterar jobbansökningar från platsbankens API och exporterar till kalkylark och lagras i en MariaDB databas.
+
+Jag trivs både med självständigt arbete och i samarbete med andra. Att få arbeta med siffror, struktur och ekonomisk analys är något jag verkligen uppskattar, och jag ser fram emot möjligheten att använda mitt engagemang och min kompetens i en framtida roll inom ekonomi eller administration.
+
+Tack för att du tar dig tid att läsa min ansökan. Jag ser fram emot möjligheten att berätta mer om hur jag kan bidra i er verksamhet.
+
+Med vänliga hälsningar,  
+Filip Erkers Lindberg
+
+		\n${job.description || ""}`;
+}
+
+// Initialize checklists
+renderChecklists();
+
+// Search button click
+document.getElementById("searchBtn").addEventListener("click", async () => {
+    const selectedRegions = getSelectedRegions();
+    const selectedJobs = getSelectedJobTitles();
+    const params = {
+        region: selectedRegions.join(","),
+        q: selectedJobs.join(" "),
+        limit: 50,
+        offset: 0
+    };
+
+    const queryString = new URLSearchParams(params).toString();
+    try {
+        const res = await fetch(`http://localhost:3000/search?${queryString}`);
+        const data = await res.json();
+        searchResults = data;
+        renderResults();
+    } catch (err) {
+        console.error("Error fetching jobs:", err);
+        alert("Failed to fetch jobs.");
+    }
+});
+
+// Move selected jobs to review
+document.getElementById("moveToReviewBtn").addEventListener("click", () => {
+    const checkboxes = document.querySelectorAll("#resultsTable tbody input[type=checkbox]:checked");
+    checkboxes.forEach(cb => {
+        const idx = cb.dataset.index;
+        const job = searchResults[idx];
+        if (!reviewList.find(j => j.id === job.id)) reviewList.push(job);
+    });
+    renderReview();
+});
+
+// Copy AI prompt
+document.getElementById("copyPromptBtn").addEventListener("click", () => {
+    const promptBox = document.getElementById("aiPrompt");
+    promptBox.select();
+    document.execCommand("copy");
+    alert("Prompt copied to clipboard!");
+});
+</script>
+
+</body>
+</html>
+
