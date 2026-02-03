@@ -80,7 +80,7 @@ def fetch_jobs_from_api(params):
             r = requests.get(JOBTECH_URL, params=params, headers=HEADERS, timeout=15)
             r.raise_for_status()
         except Exception as e:
-            print(f"❌ Error fetching from API: {e}")
+            print(f"Error fetching from API: {e}")
             break
 
         data = r.json()
@@ -109,7 +109,7 @@ def fetch_jobs_from_api(params):
 
     # Filter bad keywords
     filtered = [j for j in jobs if not any(bad in (j["headline"] or "").lower() for bad in BAD_KEYWORDS)]
-    print(f"⚡ Fetched {len(filtered)} jobs after filtering bad keywords")
+    print(f" Fetched {len(filtered)} jobs after filtering bad keywords")
     return filtered
 
 def store_jobs(jobs):
@@ -125,7 +125,7 @@ def store_jobs(jobs):
         stored += 1
 
     db.session.commit()
-    print(f"💾 Stored {stored} jobs in database")
+    print(f"Stored {stored} jobs in database")
 
 def test_db_connection():
     try:
@@ -133,13 +133,13 @@ def test_db_connection():
             db.session.execute(text("SELECT 1"))
             inspector = inspect(db.engine)
             tables = inspector.get_table_names()
-            print("✅ Database connection OK!")
-            print("📋 Tables and row counts:")
+            print("Database connection OK!")
+            print("Tables and row counts:")
             for table in tables:
                 count = db.session.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
                 print(f" - {table}: {count} rows")
     except Exception as e:
-        print(f"❌ Database connection FAILED: {e}")
+        print(f" Database connection FAILED: {e}")
 
 # ---------------- API ----------------
 @app.route("/prompt", methods=["POST"])
@@ -204,7 +204,7 @@ def load_jobs():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    print("🔹 Testing database connection...")
+    print("Testing database connection...")
     test_db_connection()
     app.run(port=3000, debug=True)
 
