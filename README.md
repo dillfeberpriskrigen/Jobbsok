@@ -1,6 +1,13 @@
 ---
-title: README
+Jobbsok
 ---
+
+Ett program som ska bli webb-baserat. Tanken är att kunna förenkla jobbsökande för arbetslösa genom att tillåta en bredare sökning och filtrering av Arbetsförmedlingens databas än den tillåter för närvarande. 
+
+AF tillåter inte att spara söktermer eller att blanda fritextsök med lokaliseringskoder för kommun/region. Det går inte heller att sortera bort irrelevanta förslag eller att exkludera annonser man redan har uteslutit. Det är det som det här projektet ska försöka förbättra.
+
+Då personliga brev har blivit en test i promptskrivande så finns det även möjlighet att spara AI templates som kombineras med jobb-beskrivningen för att enkelt föra över till den LLM man föredrar. Har tänkt integrera en wrapper mot ex. ChatGPT API i framtiden.
+
 För fullständiga parametrar se search i https://jobsearch.api.jobtechdev.se/
 
 # Regions.py
