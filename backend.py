@@ -13,9 +13,29 @@ CORS(app)
 # ---------------- CONFIG ----------------
 app.config["SQLALCHEMY_DATABASE_URI"] = "mysql+pymysql://jobbot_user:supersecret@localhost/jobbot" #Inte supersäkert TODO: Kanske ett extra secret? svårare att bruteforcea en längre sträng
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(app)
 
+db = SQLAlchemy(app)
 # ---------------- MODELS ----------------
+class JobFilter(db.Model):
+    __tablename__ = "job_filters"
+    id = db.Column(db.Integer, primary_key=True)
+    value = db.Column(db.String(255), nullable=False)
+    filter_type = db.Column(
+        db.Enum("exclude", "include"),
+        default="exclude",
+        nullable=False
+    )
+    field = db.Column(
+        db.Enum("headline", "description"),
+        default="headline",
+        nullable=False
+    )
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+def get_job_filters(filter_type="exclude"):
+    return JobFilter.query.filter_by(filter_type=filter_type).all()
+
+
 class PromptTemplate(db.Model):
     __tablename__ = "prompt_templates"
     id = db.Column(db.Integer, primary_key=True)
@@ -49,7 +69,6 @@ HEADERS = { # Borde sparas i db
     "x-feature-freetext-bool-method": "or",
     "x-feature-disable-smart-freetext": "true"
 }
-BAD_KEYWORDS = {"personlig assistent", "präst", "unpaid"} # Borde sparas i db
 
 def get_region_codes(region_str):
     regions_lower = {k.lower(): v for k, v in regions.items()}
@@ -58,13 +77,30 @@ def get_region_codes(region_str):
 
 def strip_date(dt):
     return dt.split("T")[0] if dt else None
-
 def fetch_jobs_from_api(params):
-    # Convert regions to codes
+
+    #  Definiera match-funktion
+    def job_matches_filters(job):
+        headline = (job.get("headline") or "").lower().strip()
+
+        for f in filters:
+            if f.field != "headline":
+                continue  # Ignorera andra fält
+            value = f.value.lower().strip()
+            if value in headline:
+                print(f"Excluding '{headline}' because of filter '{value}'")
+                return True
+
+        return False
+
+
+    filters = JobFilter.query.filter_by(filter_type="exclude").all()
+
+
+        # 3. Konvertera regioner
     if "region" in params and isinstance(params["region"], str):
         params["region"] = get_region_codes(params["region"])
 
-    # Map "location" → API param
     if "location" in params and params["location"]:
         params["workplaceAddress.municipality"] = params.pop("location")
 
@@ -72,6 +108,7 @@ def fetch_jobs_from_api(params):
     limit = int(params.get("limit", 50))
     jobs = []
 
+    #  Hämta jobb från API
     while True:
         params["offset"] = offset
         params["limit"] = limit
@@ -107,9 +144,10 @@ def fetch_jobs_from_api(params):
 
         offset += limit
 
-    # Filter bad keywords
-    filtered = [j for j in jobs if not any(bad in (j["headline"] or "").lower() for bad in BAD_KEYWORDS)]
-    print(f"⚡ Fetched {len(filtered)} jobs after filtering bad keywords")
+    #  Filtrera med JobFilter
+    filtered = [j for j in jobs if not job_matches_filters(j)]
+
+    print(f"⚡ Fetched {len(filtered)} jobs after applying JobFilter")
     return filtered
 
 def store_jobs(jobs):
@@ -142,12 +180,57 @@ def test_db_connection():
         print(f"❌ Database connection FAILED: {e}")
 
 # ---------------- API ----------------
-@app.route("/prompt", methods=["POST"])
-def build_prompt(): # Det är något fuffens här men jag kommer inte ihåg vad
+@app.route("/job-filters")
+def list_job_filters():
+    return [
+        {
+            "id": f.id,
+            "value": f.value,
+            "type": f.filter_type,
+            "field": f.field
+        }
+        for f in JobFilter.query.order_by(JobFilter.value).all()
+    ]
+
+@app.route("/job-filters", methods=["POST"])
+def add_job_filter():
     data = request.json
 
-    job = Job.query.get(data["job_id"])
-    template = PromptTemplate.query.get(data["prompt_template_id"])
+    value = data.get("value", "").strip().lower()
+    field = data.get("field", "headline")
+    filter_type = data.get("type", "exclude")
+
+    if not value:
+        return {"ok": False, "message": "Empty value"}, 400
+
+    exists = JobFilter.query.filter_by(
+        value=value,
+        field=field,
+        filter_type=filter_type
+    ).first()
+
+    if exists:
+        return {"ok": False, "message": "Filter already exists"}, 409
+
+    db.session.add(JobFilter(
+        value=value,
+        field=field,
+        filter_type=filter_type
+    ))
+    db.session.commit()
+
+    return {"ok": True}
+
+
+
+@app.route("/prompt", methods=["POST"])
+def build_prompt():
+    data = request.json
+    job = Job.query.get(data.get("job_id"))
+    template = PromptTemplate.query.get(data.get("prompt_template_id"))
+
+    if not job or not template:
+        return {"ok": False, "message": "Job or template not found"}, 404
 
     final_prompt = template.template.replace(
         "{{JOB_DESCRIPTION}}",
@@ -207,4 +290,5 @@ if __name__ == "__main__":
     print("🔹 Testing database connection...")
     test_db_connection()
     app.run(port=3000, debug=True)
+
 

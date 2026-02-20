@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Smart Job Explorer</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+}
+
+h1 {
+    margin-bottom: 10px;
+}
+
+h2 {
+    margin-top: 35px;
+}
+
+h3 {
+    margin-bottom: 5px;
+}
+
+.checkbox-group label {
+    display: inline-block;
+    margin-right: 12px;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 10px;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+}
+
+th {
+    background-color: #f0f0f0;
+}
+
+button {
+    margin-top: 10px;
+    padding: 6px 12px;
+    cursor: pointer;
+}
+
+.job-detail {
+    border: 1px solid #aaa;
+    padding: 15px;
+    margin-top: 25px;
+    background: #fafafa;
+}
+
+textarea {
+    width: 100%;
+    height: 120px;
+    margin-top: 5px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Smart Job Explorer</h1>
+<p>Search broadly. Filter smartly. Review only what matters.</p>
+
+<!-- ===================== SEARCH CRITERIA ===================== -->
+
+<section>
+    <h3>Where do you want to work?</h3>
+    <div id="locations" class="checkbox-group"></div>
+</section>
+
+<section>
+    <h3>What kind of roles are you looking for?</h3>
+    <div id="jobTitles" class="checkbox-group"></div>
+</section>
+
+<button id="searchBtn">Find Matching Jobs</button>
+
+<!-- ===================== FILTER MANAGEMENT ===================== -->
+
+<section>
+    <h3>Headline Exclusions</h3>
+    <p>Automatically hide jobs containing unwanted words.</p>
+    <input type="text" id="newFilterInput" placeholder="e.g. bilplåtslagare">
+    <button id="addFilterBtn">Add Exclusion</button>
+    <ul id="filtersList"></ul>
+</section>
+
+<!-- ===================== SEARCH RESULTS ===================== -->
+
+<h2>Search Results</h2>
+<table id="resultsTable">
+    <thead>
+        <tr>
+            <th>Select</th>
+            <th>Job Title</th>
+            <th>Employer</th>
+            <th>Municipality</th>
+            <th>Apply By</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<button id="moveToReviewBtn">Add Selected to Review List</button>
+
+<!-- ===================== REVIEW LIST ===================== -->
+
+<h2>Review List</h2>
+<table id="reviewTable">
+    <thead>
+        <tr>
+            <th>Job Title</th>
+            <th>Employer</th>
+            <th>Municipality</th>
+            <th>Deadline</th>
+            <th>Details</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<!-- ===================== JOB DETAIL VIEW ===================== -->
+
+<div id="jobDetailView" class="job-detail" style="display:none;">
+    <h3>
+        <a id="detailHeadline" target="_blank" rel="noopener"></a>
+    </h3>
+
+    <p><strong>Employer:</strong> <span id="detailEmployer"></span></p>
+    <p><strong>Location:</strong> <span id="detailMunicipality"></span></p>
+    <p><strong>Application Deadline:</strong> <span id="detailDeadline"></span></p>
+
+    <p><strong>Job Description</strong></p>
+    <textarea id="detailDescription" readonly></textarea>
+
+    <p><strong>AI-Generated Prompt</strong></p>
+    <textarea id="aiPrompt"></textarea>
+    <button id="copyPromptBtn">Copy Prompt</button>
+</div>
+
+<script>
+// ============================================================
+// Configuration
+// ============================================================
+
+const regionsList = [
+    "Dalarna",
+    "Ostergotland",
+    "Orebro",
+    "Jonkoping",
+    "Sodermanlan",
+    "Vastmanland",
+    "Gavleborg"
+];
+
+const jobTitlesList = [
+    "ekonom",
+    "ekonomi",
+    "strateg",
+    "verksamhetsutvecklare"
+];
+
+let searchResults = [];
+let reviewList = [];
+
+// ============================================================
+// Initial UI Rendering
+// ============================================================
+
+function renderChecklists() {
+    const locationBox = document.getElementById("locations");
+    const jobBox = document.getElementById("jobTitles");
+
+    regionsList.forEach(region => {
+        locationBox.innerHTML += `
+            <label>
+                <input type="checkbox" value="${region}" checked>
+                ${region}
+            </label>
+        `;
+    });
+
+    jobTitlesList.forEach(title => {
+        jobBox.innerHTML += `
+            <label>
+                <input type="checkbox" value="${title}" checked>
+                ${title}
+            </label>
+        `;
+    });
+}
+
+// ============================================================
+// Helpers for Selected Criteria
+// ============================================================
+
+function getSelectedRegions() {
+    return Array.from(
+        document.querySelectorAll("#locations input:checked")
+    ).map(cb => cb.value);
+}
+
+function getSelectedJobTitles() {
+    return Array.from(
+        document.querySelectorAll("#jobTitles input:checked")
+    ).map(cb => cb.value);
+}
+
+// ============================================================
+// Rendering Search Results
+// ============================================================
+
+function renderResults(jobs = searchResults) {
+    const tbody = document.querySelector("#resultsTable tbody");
+    tbody.innerHTML = "";
+
+    jobs.forEach((job, index) => {
+        tbody.innerHTML += `
+            <tr>
+                <td><input type="checkbox" data-index="${index}"></td>
+                <td>
+                    <a href="${job.webpage_url}" target="_blank" rel="noopener">
+                        ${job.headline}
+                    </a>
+                </td>
+                <td>${job.employer_name}</td>
+                <td>${job.municipality}</td>
+                <td>${job.application_deadline_simple}</td>
+            </tr>
+        `;
+    });
+}
+
+// ============================================================
+// Review List
+// ============================================================
+
+function renderReview() {
+    const tbody = document.querySelector("#reviewTable tbody");
+    tbody.innerHTML = "";
+
+    reviewList.forEach((job, index) => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${job.headline}</td>
+                <td>${job.employer_name}</td>
+                <td>${job.municipality}</td>
+                <td>${job.application_deadline_simple}</td>
+                <td>
+                    <button class="viewJobBtn" data-index="${index}">
+                        View
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+
+    document.querySelectorAll(".viewJobBtn").forEach(btn => {
+        btn.addEventListener("click", () =>
+            showJobDetail(reviewList[btn.dataset.index])
+        );
+    });
+}
+
+// ============================================================
+// Filters (Headline Exclusions)
+// ============================================================
+
+async function renderFilters() {
+    const res = await fetch("http://localhost:3000/job-filters");
+    const filters = await res.json();
+
+    const list = document.getElementById("filtersList");
+    list.innerHTML = "";
+
+    filters.forEach(f => {
+        if (f.type === "exclude" && f.field === "headline") {
+            const li = document.createElement("li");
+            li.textContent = f.value;
+            list.appendChild(li);
+        }
+    });
+}
+
+async function addJobFilter(value) {
+    if (!value) return;
+
+    await fetch("http://localhost:3000/job-filters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            value,
+            field: "headline",
+            type: "exclude"
+        })
+    });
+
+    await renderFilters();
+    applyFrontendFilters();
+}
+
+async function applyFrontendFilters() {
+    const res = await fetch("http://localhost:3000/job-filters");
+    const filters = await res.json();
+
+    const filtered = searchResults.filter(job =>
+        !filters.some(f =>
+            f.type === "exclude" &&
+            f.field === "headline" &&
+            job.headline.toLowerCase().includes(f.value.toLowerCase())
+        )
+    );
+
+    renderResults(filtered);
+}
+
+// ============================================================
+// Job Detail & AI Prompt
+// ============================================================
+
+async function showJobDetail(job) {
+    document.getElementById("jobDetailView").style.display = "block";
+
+    document.getElementById("detailHeadline").textContent = job.headline;
+    document.getElementById("detailHeadline").href = job.webpage_url;
+    document.getElementById("detailEmployer").textContent = job.employer_name;
+    document.getElementById("detailMunicipality").textContent = job.municipality;
+    document.getElementById("detailDeadline").textContent = job.application_deadline_simple;
+    document.getElementById("detailDescription").value = job.description || "";
+
+    try {
+        const res = await fetch("http://localhost:3000/prompt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                job_id: job.id,
+                prompt_template_id: 1
+            })
+        });
+
+        const data = await res.json();
+        document.getElementById("aiPrompt").value =
+            data.ok ? data.prompt : "Failed to load prompt.";
+    } catch {
+        document.getElementById("aiPrompt").value = "Failed to load prompt.";
+    }
+}
+
+// ============================================================
+// Event Listeners
+// ============================================================
+
+document.getElementById("copyPromptBtn").addEventListener("click", () => {
+    const box = document.getElementById("aiPrompt");
+    box.select();
+    document.execCommand("copy");
+    alert("Prompt copied to clipboard!");
+});
+
+document.getElementById("addFilterBtn").addEventListener("click", () => {
+    const input = document.getElementById("newFilterInput");
+    addJobFilter(input.value.trim());
+    input.value = "";
+});
+
+document.getElementById("searchBtn").addEventListener("click", async () => {
+    const params = {
+        region: getSelectedRegions().join(","),
+        q: getSelectedJobTitles().map(t => `"${t}"`).join(" OR "),
+        limit: 50,
+        offset: 0
+    };
+
+    try {
+        const res = await fetch("http://localhost:3000/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(params)
+        });
+
+        const data = await res.json();
+        searchResults = data.jobs;
+        applyFrontendFilters();
+    } catch {
+        alert("Unable to fetch jobs. Please try again.");
+    }
+});
+
+document.getElementById("moveToReviewBtn").addEventListener("click", () => {
+    document
+        .querySelectorAll("#resultsTable input:checked")
+        .forEach(cb => {
+            const job = searchResults[cb.dataset.index];
+            if (!reviewList.some(j => j.id === job.id)) {
+                reviewList.push(job);
+            }
+        });
+
+    renderReview();
+});
+
+// ============================================================
+// Boot
+// ============================================================
+
+renderChecklists();
+renderFilters();
+</script>
+
+</body>
+</html>

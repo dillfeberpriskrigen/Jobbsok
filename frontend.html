@@ -18,6 +18,12 @@ textarea { width: 100%; height: 120px; margin-top: 5px; }
 <body>
 
 <h1>Job Search</h1>
+<div>
+    <h3>Add Job Filter (Headline)</h3>
+    <input type="text" id="newFilterInput" placeholder="Enter filter word">
+    <button id="addFilterBtn">Add Filter</button>
+    <p id="filterMessage" style="color:green;"></p>
+</div>
 
 <div>
     <h3>Locations</h3>
@@ -64,7 +70,7 @@ textarea { width: 100%; height: 120px; margin-top: 5px; }
 </table>
 
 <div id="jobDetailView" class="job-detail" style="display:none;">
-    <h3 id="detailHeadline"></h3>
+    <h3><a id="detailHeadline" target="_blank" rel="noopener"></a></h3>
     <p><strong>Employer:</strong> <span id="detailEmployer"></span></p>
     <p><strong>Municipality:</strong> <span id="detailMunicipality"></span></p>
     <p><strong>Deadline:</strong> <span id="detailDeadline"></span></p>
@@ -126,7 +132,7 @@ function renderResults() {
         const tr = document.createElement("tr");
         tr.innerHTML = `
             <td><input type="checkbox" data-index="${idx}"></td>
-            <td>${job.headline}</td>
+	    <td><a href="${job.webpage_url}" target="_blank" rel="noopener"> ${job.headline}</a></td>
             <td>${job.employer_name}</td>
             <td>${job.municipality}</td>
             <td>${job.application_deadline_simple}</td>
@@ -157,6 +163,20 @@ function renderReview() {
         });
     });
 }
+
+async function addJobFilter(value) {
+    await fetch("http://localhost:3000/job-filters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            value,
+            field: "headline",
+            type: "exclude"
+        })
+    });
+}
+
+
 async function loadPrompt(job, templateId) {
     const res = await fetch("http://localhost:3000/prompt", {
         method: "POST",
@@ -179,20 +199,32 @@ async function loadPrompt(job, templateId) {
 
 async function showJobDetail(job) {
     document.getElementById("jobDetailView").style.display = "block";
-    document.getElementById("detailHeadline").textContent = job.headline;
+    const headlineLink = document.getElementById("detailHeadline");
+headlineLink.textContent = job.headline;
+headlineLink.href = job.webpage_url;
     document.getElementById("detailEmployer").textContent = job.employer_name;
     document.getElementById("detailMunicipality").textContent = job.municipality;
     document.getElementById("detailDeadline").textContent = job.application_deadline_simple;
     document.getElementById("detailDescription").value = job.description || "";
 
-    const res = await fetch(`http://localhost:3000/prompt/${job.id}`);
-    const data = await res.json();
+try {
+    const res = await fetch("http://localhost:3000/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            job_id: job.id,
+            prompt_template_id: 1   // ← se till att ID finns i DB
+        })
+    });
 
-    if (data.ok) {
-        document.getElementById("aiPrompt").value = data.prompt;
-    } else {
-        document.getElementById("aiPrompt").value = "Failed to load prompt.";
-    }
+    const data = await res.json();
+    document.getElementById("aiPrompt").value =
+        data.ok ? data.prompt : "Failed to load prompt.";
+} catch (err) {
+    console.error("Prompt error:", err);
+    document.getElementById("aiPrompt").value = "Failed to load prompt.";
+}
+
 }
 
 // Initialize checklists
@@ -206,7 +238,7 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
 
     const params = {
         region: selectedRegions.join(","),
-        q: selectedJobs.join(" "),
+        q: selectedJobs.map(j => `"${j}"`).join(" OR "),
         limit: 50,
         offset: 0
     };
@@ -260,6 +292,47 @@ document.getElementById("copyPromptBtn").addEventListener("click", () => {
     document.execCommand("copy");
     alert("Prompt copied to clipboard!");
 });
+
+
+document.getElementById("addFilterBtn").addEventListener("click", async () => {
+    const input = document.getElementById("newFilterInput");
+    const value = input.value.trim();
+
+    if (!value) {
+        alert("Please enter a filter value.");
+        return;
+    }
+
+    try {
+        const res = await fetch("http://localhost:3000/job-filters", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                value,
+                field: "headline",  // Du kan göra dynamiskt om du vill
+                type: "exclude"
+            })
+        });
+
+        const data = await res.json();
+        const msg = document.getElementById("filterMessage");
+
+        if (data.ok) {
+            msg.textContent = `Filter "${value}" added successfully!`;
+            input.value = "";
+        } else {
+            msg.textContent = `Error: ${data.message}`;
+        }
+
+        // Rensa meddelande efter några sekunder
+        setTimeout(() => { msg.textContent = ""; }, 4000);
+
+    } catch (err) {
+        console.error("Error adding filter:", err);
+        alert("Failed to add filter.");
+    }
+});
+
 </script>
 
 </body>
