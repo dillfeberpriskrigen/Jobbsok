@@ -516,7 +516,6 @@ Sök Britt-marie för fa-an!
 	</tbody>
 </table>
 
-{
 
 <SettingsModal
   open={showSettings}
