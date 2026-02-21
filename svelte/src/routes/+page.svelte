@@ -1,6 +1,7 @@
 <script>
 import SettingsModal from "$lib/components/SettingsModal.svelte";
 import JobDetailModal from "$lib/components/JobDetailModal.svelte";
+import { onMount } from "svelte";
 // Deklarationer
 
 	const regionsList = [
@@ -9,10 +10,10 @@ import JobDetailModal from "$lib/components/JobDetailModal.svelte";
 		"Västmanlands län", "Gävleborgs län"
 	];
 
-	const jobTitlesList = [
+	let jobTitlesList = $state([
 		"Snut", "ekonomi",
 		"strateg", "verksamhetsutvecklare"
-	];
+	]);
 
 	// -----------------------------
 	// State
@@ -28,6 +29,7 @@ import JobDetailModal from "$lib/components/JobDetailModal.svelte";
 	let newFilterInput = $state("");
 	let filterMessage = $state("");
 
+    let parsedKeywords = $state([]);   
 	let filters = $state([]);   // 👈 store backend filters
 
 	let selectedJobDetail = $state(null);
@@ -58,6 +60,75 @@ import JobDetailModal from "$lib/components/JobDetailModal.svelte";
         "Orebro": "xTCk_nT5_Zjm",
         "Ostergotland": "oLT3_Q9p_3nn",
     };
+
+  let extractedKeywords = $state([]);  // array of keywords
+  let selectedKeywords = $state([]);   // which keywords are active for filtering
+//Key handling TODO: Organisera dina funktioner
+   onMount(() => {
+    const handleEsc = (e) => {
+      if (e.key === 'Escape' && selectedJobDetail) {
+        selectedJobDetail = null;
+      }
+    };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  });
+
+  
+    function parseKeywords() {
+    extractedKeywords = searchKeyword
+      .split(/[,;]+/)
+      .map(k => k.trim())
+      .filter(k => k.length > 0);
+
+    // Reset selectedKeywords
+    selectedKeywords = [];
+  }
+
+
+function saveSelectedKeywords() {
+  if (selectedKeywords.length === 0) return;
+
+  // Add new keywords to jobTitlesList if not already present
+  const newKeywords = selectedKeywords.filter(kw => !jobTitlesList.includes(kw));
+  if (newKeywords.length > 0) {
+    jobTitlesList = [...jobTitlesList, ...newKeywords];
+  }
+
+  // Add to selectedJobTitles
+  selectedJobTitles = [...selectedJobTitles, ...selectedKeywords.filter(kw => !selectedJobTitles.includes(kw))];
+
+  // Clear input and selections
+  searchKeyword = "";
+  extractedKeywords = [];
+  selectedKeywords = [];
+}
+
+
+
+
+  // Toggle keyword selection
+  function toggleKeyword(keyword) {
+    if (selectedKeywords.includes(keyword)) {
+      selectedKeywords = selectedKeywords.filter(k => k !== keyword);
+    } else {
+      selectedKeywords = [...selectedKeywords, keyword];
+    }
+  }
+
+  // Filter jobs based on selected keywords TODO: Kanske poänglös
+  function filterJobs() {
+    if (!selectedKeywords.length) {
+      filteredResults = [...allResults]; // show all if none selected
+      return;
+    }
+
+    filteredResults = allResults.filter(job =>
+      selectedKeywords.every(keyword =>
+        job.headline?.toLowerCase().includes(keyword.toLowerCase())
+      )
+    );
+  }
 
 
 function copyPrompt() {
@@ -91,7 +162,6 @@ function showJobDetail(job) {
   selectedJobDetail = job; // only now the modal shows
 }
 
-import { onMount } from "svelte";
 
 onMount(() => {
 	const handleKey = (e) => {
@@ -135,31 +205,32 @@ async function fetchNewJobs() {
 }
 
 async function searchStoredJobs() {
+    if (selectedJobTitles.length === 0) return;
+
     const params = {
-        regions: selectedRegions,
-        keyword: searchKeyword,
-        jobTitles: selectedJobTitles
+      regions: selectedRegions,
+      jobTitles: selectedJobTitles,
+      keyword: searchKeyword
     };
 
     try {
-        const res = await fetch("http://localhost:3000/jobs/search", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(params)
-        });
-        const data = await res.json();
+      const res = await fetch("http://localhost:3000/jobs/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params)
+      });
 
-        // map application_deadline_simple
-        filteredResults = data.map(job => ({
-            ...job,
-            _selected: false,
-            application_deadline_simple: job.application_deadline_simple || ""
-        }));
+      const data = await res.json();
+
+      filteredResults = data.map(job => ({
+        ...job,
+        _selected: false,
+        application_deadline_simple: job.application_deadline_simple || ""
+      }));
     } catch (err) {
-        console.error(err);
-        filterMessage = "Failed to search stored jobs.";
+      console.error("Failed to search stored jobs:", err);
     }
-}
+  }
 function toggleAllRegions() {
   if (selectedRegions.length === regionsList.length) {
     selectedRegions = []; // deselect all
@@ -187,16 +258,17 @@ function closeSettings() {
 	// Load filters from backend
 	// -----------------------------
 	async function loadFilters() {
-		try {
-			const res = await fetch("http://localhost:3000/filters");
-			filters = await res.json();
-		} catch (err) {
-			console.error("Failed loading filters", err);
-		}
-	}
+  try {
+    const res = await fetch("http://localhost:3000/filters");
+    filters = await res.json();
+  } catch (err) {
+    console.error("Failed loading filters", err);
+  }
+}
 
-	loadFilters();
-
+onMount(() => {
+  loadFilters();
+});
 
 
 	// -----------------------------
@@ -273,27 +345,31 @@ function filterLocalResults() {
 		}
 	}
 
-	// -----------------------------
-	// Move to review
-	// -----------------------------
-	function moveToReview() {
-		const selectedJobs = filteredResults.filter(
-			job => job._selected && !reviewList.some(j => j.id === job.id)
-		);
-		if (selectedJobs.length) {
-			reviewList = [...reviewList, ...selectedJobs];
-		}
-	}
 
-	// -----------------------------
-	// Clear job detail if removed
-	// -----------------------------
-	$effect(() => {
-		if (selectedJobDetail && !reviewList.find(j => j.id === selectedJobDetail.id)) {
-			selectedJobDetail = null;
-			aiPrompt = "";
-		}
-	});
+// Nuvarande filter funktion TODO: Fixa
+  function filterJobsByKeywords() {
+    // Split input by comma, semicolon, or just spaces if needed
+    parsedKeywords = searchKeyword
+      .split(/[,;]+/)
+      .map(k => k.trim().toLowerCase())
+      .filter(k => k.length > 0);
+
+    filteredResults = allResults.filter(job =>
+      parsedKeywords.every(keyword =>
+        job.headline?.toLowerCase().includes(keyword)
+      )
+    );
+
+
+  }
+
+  function suggestSaveKeywords() {
+    if (!parsedKeywords.length) return;
+    if (confirm(`Do you want to save these keywords?\n${parsedKeywords.join("\n")}`)) {
+      // call your save function or backend here
+      console.log("Saving keywords:", parsedKeywords);
+    }
+  }
 </script>
 <style>
   
@@ -308,27 +384,49 @@ function filterLocalResults() {
 	.message { color: green; margin-top: 5px; }
 	button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
-<button on:click={openSettings} style="float:right;">
+<button onclick={openSettings} style="float:right;">
 	⚙ Settings
 </button>
-<div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
+
+
+
+
+<div style="margin-top: 10px;">
   <input
     class="input"
     type="text"
-    placeholder="Filtrera på nyckelord om det behövs"
+    placeholder="Skriv söktermer, separera med komma"
     bind:value={searchKeyword}
-    title="Search jobs"
+    oninput={parseKeywords}
   />
+
+  {#if extractedKeywords.length > 0}
+    <div class="keyword-list" style="margin-top: 10px;">
+      <p>Välj vilka nyckelord du vill spara:</p>
+      {#each extractedKeywords as kw}
+        <label style="display: block; margin-bottom: 4px;">
+          <input type="checkbox"
+                 bind:group={selectedKeywords}
+                 value={kw} />
+          {kw}
+        </label>
+      {/each}
+    </div>
+
+    <button class="btn" onclick={saveSelectedKeywords}>
+      Spara valda nyckelord
+    </button>
+  {/if}
+
   <button
     type="button"
     class="btn preset-filled-primary-500"
-    on:click={filterLocalResults}
-    disabled={!searchKeyword}
+    onclick={searchStoredJobs}
+    disabled={selectedJobTitles.length === 0}
   >
-    Filtrera
+    Sök!
   </button>
 </div>
-
 
 <div class="p-4">
 
@@ -338,12 +436,12 @@ function filterLocalResults() {
   <button
     class="{selectedJobTitles.includes(title) ? 'preset-filled-primary-500' : 'btn-outline'}"
     type="button"
-    on:click={() => toggleJob(title)}
+    onclick={() => toggleJob(title)}
   >
     {title}
   </button>
 {/each}
-<button type="button" class="btn small-btn" on:click={toggleAllJobTitles}>
+<button type="button" class="btn small-btn" onclick={toggleAllJobTitles}>
     {selectedJobTitles.length === jobTitlesList.length ? "Deselect All" : "Select All"}
   </button>
   </div>
@@ -355,12 +453,12 @@ function filterLocalResults() {
   <button
     class="{selectedRegions.includes(region) ? 'preset-filled-primary-500' : 'btn-outline'}"
     type="button"
-    on:click={() => toggleRegion(region)}
+    onclick={() => toggleRegion(region)}
   >
     {region}
   </button>
 {/each}
-  <button type="button" class="btn small-btn" on:click={toggleAllRegions}>
+  <button type="button" class="btn small-btn" onclick={toggleAllRegions}>
     {selectedRegions.length === regionsList.length ? "Deselect All" : "Select All"}
   </button>
   </div>
@@ -371,30 +469,11 @@ function filterLocalResults() {
 <hr class="hr border-t-8" />
  </div>
 <div style="margin-top:20px;">
-<button type="button" class="btn preset-filled-primary-500" on:click={searchStoredJobs}>
+<button type="button" class="btn preset-filled-primary-500" onclick={searchStoredJobs}>
 Sök Britt-marie för fa-an!
 </button>
 </div>
- <!-- Keyword Search -->
 
-
-<div style="margin-top: 10px; display: flex; gap: 8px; align-items: center;">
-  <input
-    class="input"
-    type="text"
-    placeholder="Filtrera på nyckelord om det behövs"
-    bind:value={searchKeyword}
-    title="Search jobs"
-  />
-  <button
-    type="button"
-    class="btn preset-filled-primary-500"
-    on:click={filterLocalResults}
-    disabled={!searchKeyword}
-  >
-    Filtrera
-  </button>
-</div>
 
    
 
@@ -412,20 +491,31 @@ Sök Britt-marie för fa-an!
 	</thead>
 	<tbody>
 	{#each filteredResults as job}
-		<tr>
-			<td><input type="checkbox" bind:checked={job._selected} /></td>
-			<td><a href={job.webpage_url} target="_blank">{job.headline}</a></td>
-			<td>{job.employer_name}</td>
-			<td>{job.municipality}</td>
-			<td>{job.application_deadline_simple}</td>
-		</tr>
-	{/each}
+<tr>
+  <td>
+    <input 
+      type="checkbox" 
+      bind:checked={job._selected}
+      onchange={() => {
+        if (job._selected && !reviewList.some(j => j.id === job.id)) {
+          // Add to reviewList immediately
+          reviewList = [...reviewList, job];
+        } else if (!job._selected) {
+          // Remove from reviewList if unchecked
+          reviewList = reviewList.filter(j => j.id !== job.id);
+        }
+      }}
+    />
+  </td>
+  <td><a href={job.webpage_url} target="_blank">{job.headline}</a></td>
+  <td>{job.employer_name}</td>
+  <td>{job.municipality}</td>
+  <td>{job.application_deadline_simple}</td>
+</tr>
+{/each}
 	</tbody>
 </table>
 
-<button on:click={moveToReview} disabled={!filteredResults.some(j => j._selected)}>
-	Move Selected to Review
-</button>
 
 <!-- Review List -->
 <h2>Review List</h2>
@@ -446,38 +536,28 @@ Sök Britt-marie för fa-an!
 			<td>{job.employer_name}</td>
 			<td>{job.municipality}</td>
 			<td>{job.application_deadline_simple}</td>
-			<td><button on:click={() => showJobDetail(job)}>View</button></td>
+			<td><button onclick={() => showJobDetail(job)}>View</button></td>
 		</tr>
 	{/each}
 	</tbody>
 </table>
 
-<!-- Job Detail -->
 {#if selectedJobDetail}
-	<div class="job-detail">
-		<h3><a href={selectedJobDetail.webpage_url} target="_blank">{selectedJobDetail.headline}</a></h3>
-		<p><strong>Employer:</strong> {selectedJobDetail.employer_name}</p>
-		<p><strong>Municipality:</strong> {selectedJobDetail.municipality}</p>
-		<p><strong>Deadline:</strong> {selectedJobDetail.application_deadline_simple}</p>
-
-		<p><strong>Description:</strong></p>
-		<textarea readonly>{selectedJobDetail.description}</textarea>
-
-		<p><strong>AI Prompt:</strong></p>
-		<textarea bind:value={aiPrompt}></textarea>
-
-		<button on:click={copyPrompt}>Copy Prompt</button>
-	</div>
-{/if}
-
-{#if selectedJobDetail}
-  <div class="modal-backdrop" on:click={() => selectedJobDetail = null}>
-    <div class="modal-content" on:click|stopPropagation>
+  <div class="modal-backdrop" onclick={() => (selectedJobDetail = null)}>
+    <div
+      class="modal-content"
+      onclick={(e) => e.stopPropagation()}
+    >
       <h3>
-        <a href={selectedJobDetail.webpage_url} target="_blank">
+        <a
+          href={selectedJobDetail.webpage_url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           {selectedJobDetail.headline}
         </a>
       </h3>
+
       <p><strong>Employer:</strong> {selectedJobDetail.employer_name}</p>
       <p><strong>Municipality:</strong> {selectedJobDetail.municipality}</p>
       <p><strong>Deadline:</strong> {selectedJobDetail.application_deadline_simple}</p>
@@ -488,23 +568,29 @@ Sök Britt-marie för fa-an!
       <p><strong>AI Prompt:</strong></p>
       <textarea bind:value={aiPrompt}></textarea>
 
-      <button on:click={copyPrompt}>Copy Prompt</button>
-      <button on:click={() => selectedJobDetail = null}>Close</button>
+      <button type="button" onclick={copyPrompt}>
+        Copy Prompt
+      </button>
+
+      <button type="button" onclick={() => (selectedJobDetail = null)}>
+        Close
+      </button>
     </div>
   </div>
 {/if}
+
 <SettingsModal
   open={showSettings}
   filters={filters}
   deleteFilter={deleteFilter}
-  on:close={closeSettings}
-  on:fetch={fetchNewJobs}
+  onclose={closeSettings}
+  onfetch={fetchNewJobs}
 />
 
 <JobDetailModal
   open={selectedJobDetail !== null}
   job={selectedJobDetail}
   aiPrompt={aiPrompt}
-  on:close={() => selectedJobDetail = null}
+  onclose={() => selectedJobDetail = null}
   onCopy={copyPrompt}
 />
