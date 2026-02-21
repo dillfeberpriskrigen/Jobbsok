@@ -37,29 +37,6 @@ import { onMount } from "svelte";
     let activeIndex = -1;
 
     let showSettings = $state(false);
-    const regionMap = {
-        "Blekinge": "DGQd_uYs_oKb",
-        "Dalarna": "oDpK_oZ2_WYt",
-        "Gotland": "K8iD_VQv_2BA",
-        "Gavleborg": "zupA_8Nt_xcD",
-        "Halland": "wjee_qH2_yb6",
-        "Jamtland": "65Ms_7r1_RTG",
-        "Jonkoping": "MtbE_xWT_eMi",
-        "Kalmar": "9QUH_2bb_6Np",
-        "Kronoberg": "tF3y_MF9_h5G",
-        "Norrbotten": "9hXe_F4g_eTG",
-        "Skane": "CaRE_1nn_cSU",
-        "Stockholm": "CifL_Rzy_Mku",
-        "Sodermanland": "s93u_BEb_sx2",
-        "Uppsala": "zBon_eET_fFU",
-        "Varmland": "EVVp_h6U_GSZ",
-        "Vasterbotten": "g5Tt_CAV_zBd",
-        "Vasternorrland": "NvUF_SP1_1zo",
-        "Vastmanland": "G6DV_fKE_Viz",
-        "Vastra Gotaland": "zdoY_6u5_Krt",
-        "Orebro": "xTCk_nT5_Zjm",
-        "Ostergotland": "oLT3_Q9p_3nn",
-    };
 
   let extractedKeywords = $state([]);  // array of keywords
   let selectedKeywords = $state([]);   // which keywords are active for filtering
@@ -155,9 +132,6 @@ function copyPrompt() {
     }
   }
 
-function getSelectedRegionCodes() {
-    return selectedRegions.map(name => regionMap[name]).filter(Boolean);
-}
 function showJobDetail(job) {
   selectedJobDetail = job; // only now the modal shows
 }
@@ -542,42 +516,7 @@ Sök Britt-marie för fa-an!
 	</tbody>
 </table>
 
-{#if selectedJobDetail}
-  <div class="modal-backdrop" onclick={() => (selectedJobDetail = null)}>
-    <div
-      class="modal-content"
-      onclick={(e) => e.stopPropagation()}
-    >
-      <h3>
-        <a
-          href={selectedJobDetail.webpage_url}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {selectedJobDetail.headline}
-        </a>
-      </h3>
-
-      <p><strong>Employer:</strong> {selectedJobDetail.employer_name}</p>
-      <p><strong>Municipality:</strong> {selectedJobDetail.municipality}</p>
-      <p><strong>Deadline:</strong> {selectedJobDetail.application_deadline_simple}</p>
-
-      <p><strong>Description:</strong></p>
-      <textarea readonly>{selectedJobDetail.description}</textarea>
-
-      <p><strong>AI Prompt:</strong></p>
-      <textarea bind:value={aiPrompt}></textarea>
-
-      <button type="button" onclick={copyPrompt}>
-        Copy Prompt
-      </button>
-
-      <button type="button" onclick={() => (selectedJobDetail = null)}>
-        Close
-      </button>
-    </div>
-  </div>
-{/if}
+{
 
 <SettingsModal
   open={showSettings}

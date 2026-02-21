@@ -15,26 +15,38 @@
 
 {#if open && job}
 
-  <div class="modal-backdrop" on:click={close}>
-    <div class="modal" on:click|stopPropagation>
-      <div class="exit-button">
+  <div class="modal-backdrop" onclick={() => (selectedJobDetail = null)}>
+    <div
+      class="modal-content"
+      onclick={(e) => e.stopPropagation()}
+    >
+      <h3>
+        <a
+          href={selectedJobDetail.webpage_url}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {selectedJobDetail.headline}
+        </a>
+      </h3>
 
-            <button 
-            class="btn preset-filled-primary-500"
-            on:click={close}>&#10006;</button>
-      </div>
-      <h3><a href={job.webpage_url} target="_blank">{job.headline}</a></h3>
-      <p><strong>Arbetsgivare:</strong> {job.employer_name}</p>
-      <p><strong>Kommun:</strong> {job.municipality}</p>
-      <p><strong>Ansöknings deadline:</strong> {job.application_deadline_simple}</p>
+      <p><strong>Employer:</strong> {selectedJobDetail.employer_name}</p>
+      <p><strong>Municipality:</strong> {selectedJobDetail.municipality}</p>
+      <p><strong>Deadline:</strong> {selectedJobDetail.application_deadline_simple}</p>
 
-      <p><strong>Arbetsbeskrivning:</strong></p>
-      <textarea readonly>{job.description}</textarea>
+      <p><strong>Description:</strong></p>
+      <textarea readonly>{selectedJobDetail.description}</textarea>
 
       <p><strong>AI Prompt:</strong></p>
       <textarea bind:value={aiPrompt}></textarea>
 
-      <button on:click={onCopy}>Copy Prompt</button>
+      <button type="button" onclick={copyPrompt}>
+        Copy Prompt
+      </button>
+
+      <button type="button" onclick={() => (selectedJobDetail = null)}>
+        Close
+      </button>
     </div>
   </div>
 {/if}
