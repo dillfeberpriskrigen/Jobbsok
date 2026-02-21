@@ -1,6 +1,10 @@
----
-title: README
----
+
+# Jobbsök (projektnamn)
+
+Jobbsök är en databas som hämtas från Arbetsförmedlingens jobbtechdev api. Tanken är att göra det lättare för arbetssökare att hitta och prenumerera på specifika joblistingar vilket i sin tur ska underlätta sökfriktioner. 
+
+
+# Egentligen irrelevant nu men borde finnas kvar för dokumentation
 För fullständiga parametrar se search i https://jobsearch.api.jobtechdev.se/
 
 # Regions.py
