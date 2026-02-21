@@ -3,6 +3,7 @@ CREATE TABLE jobs (
     headline TEXT,
     employer_name TEXT,
     municipality TEXT,
+    region	TEXT,
     webpage_url TEXT,
     publication_date DATETIME,
     application_deadline DATE,

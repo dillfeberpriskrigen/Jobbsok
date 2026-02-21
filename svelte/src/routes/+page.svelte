@@ -34,12 +34,17 @@ import { onMount } from "svelte";
 
 	let selectedJobDetail = $state(null);
 	let aiPrompt = $state("");
-    let activeIndex = -1;
 
     let showSettings = $state(false);
+    let showDetails = $state(false);
 
   let extractedKeywords = $state([]);  // array of keywords
   let selectedKeywords = $state([]);   // which keywords are active for filtering
+
+  function closeDetail() {
+    showDetails = false;
+    selectedJobDetail = null;
+  }
 //Key handling TODO: Organisera dina funktioner
    onMount(() => {
     const handleEsc = (e) => {
@@ -84,30 +89,6 @@ function saveSelectedKeywords() {
 
 
 
-  // Toggle keyword selection
-  function toggleKeyword(keyword) {
-    if (selectedKeywords.includes(keyword)) {
-      selectedKeywords = selectedKeywords.filter(k => k !== keyword);
-    } else {
-      selectedKeywords = [...selectedKeywords, keyword];
-    }
-  }
-
-  // Filter jobs based on selected keywords TODO: Kanske poänglös
-  function filterJobs() {
-    if (!selectedKeywords.length) {
-      filteredResults = [...allResults]; // show all if none selected
-      return;
-    }
-
-    filteredResults = allResults.filter(job =>
-      selectedKeywords.every(keyword =>
-        job.headline?.toLowerCase().includes(keyword.toLowerCase())
-      )
-    );
-  }
-
-
 function copyPrompt() {
     navigator.clipboard.writeText(aiPrompt);
   }
@@ -134,6 +115,7 @@ function copyPrompt() {
 
 function showJobDetail(job) {
   selectedJobDetail = job; // only now the modal shows
+  showDetails = true;
 }
 
 
@@ -151,15 +133,15 @@ onMount(() => {
 	};
 });
 
-async function fetchNewJobs() {
+async function fetchNewJobs() { // TODO: 
     const params = {
-        region: selectedRegions,  // codes only
+        region: selectedRegions, 
         q: selectedJobTitles.map(j => `"${j}"`).join(" OR "),
         limit: 50
     };
 
     try {
-        const res = await fetch("http://localhost:3000/jobs/fetch", {
+        const res = await fetch("api/jobs/search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(params)
@@ -188,7 +170,7 @@ async function searchStoredJobs() {
     };
 
     try {
-      const res = await fetch("http://localhost:3000/jobs/search", {
+      const res = await fetch("api/jobs/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params)
@@ -209,15 +191,15 @@ function toggleAllRegions() {
   if (selectedRegions.length === regionsList.length) {
     selectedRegions = []; // deselect all
   } else {
-    selectedRegions = [...regionsList]; // select all
+    selectedRegions = [...regionsList]; 
   }
 }
 
 function toggleAllJobTitles() {
   if (selectedJobTitles.length === jobTitlesList.length) {
-    selectedJobTitles = []; // deselect all
+    selectedJobTitles = []; 
   } else {
-    selectedJobTitles = [...jobTitlesList]; // select all
+    selectedJobTitles = [...jobTitlesList]; 
   }
 }
 
@@ -228,9 +210,11 @@ function openSettings() {
 function closeSettings() {
 	showSettings = false;
 }
-	// -----------------------------
-	// Load filters from backend
-	// -----------------------------
+
+
+
+
+// Start filter
 	async function loadFilters() {
   try {
     const res = await fetch("http://localhost:3000/filters");
@@ -245,17 +229,13 @@ onMount(() => {
 });
 
 
-	// -----------------------------
-	// Local filtering (regions + titles + backend filters)
-	// -----------------------------
-	
-function filterLocalResults() {
+function filterLocalResults() { // Vill jag ha kvar filtret? 
     const excludeFilters = filters
         .filter(f => f.type === "exclude")
         .map(f => f.value.toLowerCase());
 
     filteredResults = allResults.filter(job =>
-        selectedRegions.includes(job.region) && // ← use region now
+        selectedRegions.includes(job.region) && 
         selectedJobTitles.some(t =>
             job.headline?.toLowerCase().includes(t.toLowerCase())
         ) &&
@@ -267,9 +247,6 @@ function filterLocalResults() {
     );
 }
 
-	// -----------------------------
-	// Add filter
-	// -----------------------------
 	async function addJobFilter() {
 		const value = newFilterInput.trim();
 		if (!value) {
@@ -305,9 +282,6 @@ function filterLocalResults() {
 		setTimeout(() => filterMessage = "", 3000);
 	}
 
-	// -----------------------------
-	// Delete filter
-	// -----------------------------
 	async function deleteFilter(id) {
 		try {
 			await fetch(`http://localhost:3000/filters/${id}`, {
@@ -319,10 +293,9 @@ function filterLocalResults() {
 		}
 	}
 
-
-// Nuvarande filter funktion TODO: Fixa
+// Slut filter sektion
+// Nuvarande filter funktion TODO: Fixa. Är inte det här min nuvarande sökfunktion?
   function filterJobsByKeywords() {
-    // Split input by comma, semicolon, or just spaces if needed
     parsedKeywords = searchKeyword
       .split(/[,;]+/)
       .map(k => k.trim().toLowerCase())
@@ -337,13 +310,7 @@ function filterLocalResults() {
 
   }
 
-  function suggestSaveKeywords() {
-    if (!parsedKeywords.length) return;
-    if (confirm(`Do you want to save these keywords?\n${parsedKeywords.join("\n")}`)) {
-      // call your save function or backend here
-      console.log("Saving keywords:", parsedKeywords);
-    }
-  }
+
 </script>
 <style>
   
@@ -438,7 +405,8 @@ function filterLocalResults() {
   </div>
 
 </div>
-<!-- Job Titles -->
+
+
  <div>
 <hr class="hr border-t-8" />
  </div>
@@ -451,7 +419,6 @@ Sök Britt-marie för fa-an!
 
    
 
-<!-- Search Results -->
 <h2>Search Results</h2>
 <table>
 	<thead>
@@ -515,20 +482,21 @@ Sök Britt-marie för fa-an!
 	{/each}
 	</tbody>
 </table>
+{#if showSettings}
+  <SettingsModal
+    open={showSettings}
+    filters={filters}
+    deleteFilter={deleteFilter}
+    onclose={closeSettings}
+    onfetch={fetchNewJobs}
+  />
+{/if}
 
-
-<SettingsModal
-  open={showSettings}
-  filters={filters}
-  deleteFilter={deleteFilter}
-  onclose={closeSettings}
-  onfetch={fetchNewJobs}
-/>
-
-<JobDetailModal
-  open={selectedJobDetail !== null}
-  job={selectedJobDetail}
-  aiPrompt={aiPrompt}
-  onclose={() => selectedJobDetail = null}
-  onCopy={copyPrompt}
-/>
+{#if showDetails}
+  <JobDetailModal
+    job={selectedJobDetail}
+    aiPrompt={aiPrompt}
+    onclose={closeDetail}
+    oncopy={copyPrompt}
+  />
+{/if}
