@@ -12,9 +12,8 @@ DB_URI = "mysql+pymysql://jobbot_user:supersecret@127.0.0.1:3306/jobbot_db"
 
 # Pre-specified parameters for fetching jobs
 FETCH_PARAMS = {
-    "region": [    "DGQd_uYs_oKb",
-    "oDpK_oZ2_WYt",    "K8iD_VQv_2BA",    "zupA_8Nt_xcD",    "wjee_qH2_yb6",   "65Ms_7r1_RTG",    "MtbE_xWT_eMi",    "9QUH_2bb_6Np",    "tF3y_MF9_h5G",
-    "9hXe_F4g_eTG",    "CaRE_1nn_cSU",    "CifL_Rzy_Mku",    "s93u_BEb_sx2",    "zBon_eET_fFU",    "EVVp_h6U_GSZ",    "g5Tt_CAV_zBd",    "NvUF_SP1_1zo",    "G6DV_fKE_Viz",    "zdoY_6u5_Krt",    "xTCk_nT5_Zjm",    "oLT3_Q9p_3nn"],
+#   "region": ["DGQd_uYs_oKb","oDpK_oZ2_WYt","K8iD_VQv_2BA","zupA_8Nt_xcD","wjee_qH2_yb6","65Ms_7r1_RTG","MtbE_xWT_eMi","9QUH_2bb_6Np","tF3y_MF9_h5G","9hXe_F4g_eTG","CaRE_1nn_cSU","CifL_Rzy_Mku", "s93u_BEb_sx2","zBon_eET_fFU","EVVp_h6U_GSZ","g5Tt_CAV_zBd","NvUF_SP1_1zo","G6DV_fKE_Viz","zdoY_6u5_Krt","xTCk_nT5_Zjm","oLT3_Q9p_3nn"],
+    "region": ["oDpK_oZ2_WYt"],
     "jobTitles": [""],  # example job titles
     "limit": 50
 }

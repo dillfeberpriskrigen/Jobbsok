@@ -1,28 +1,47 @@
-import { db, sql } from '$lib/server/db';
+import { db } from '$lib/server/db';
 import { jobs } from '$lib/server/db/schema';
 import { json } from '@sveltejs/kit';
+import { and, or, inArray, sql } from 'drizzle-orm';
 
 export async function POST({ request }) {
-  const { regionCodes = [], jobTitles = [] } = await request.json();
+  const { regions = [], jobTitles = [], keyword = "" } = await request.json();
+
+  const conditions = [];
+
+  const cleanRegions = regions.map(r => r.trim()).filter(Boolean);
+  if (cleanRegions.length > 0) {
+    conditions.push(inArray(jobs.region, cleanRegions));
+  }
+
+  const titleConditions = [];
+
+  for (const t of jobTitles.map(j => j.trim()).filter(Boolean)) {
+    const searchTerm = `%${t.toLowerCase()}%`;
+    titleConditions.push(sql`LOWER(${jobs.headline}) LIKE ${searchTerm}`);
+  }
+
+  const trimmedKeyword = keyword.trim();
+  if (trimmedKeyword.length > 0) {
+    const searchTerm = `%${trimmedKeyword.toLowerCase()}%`;
+    titleConditions.push(sql`LOWER(${jobs.headline}) LIKE ${searchTerm}`);
+  }
+
+  if (titleConditions.length > 0) {
+    conditions.push(or(...titleConditions));
+  }
 
   let query = db.select().from(jobs);
 
-  // Filter by region
-  if (regionCodes.length > 0) {
-    query = query.where(jobs.region.in(regionCodes));
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions));
   }
 
-  // Filter by job titles (case-insensitive)
-  if (jobTitles.length > 0) {
-    // Build OR conditions manually
-    const titleConditions = jobTitles.map(
-      title => sql`${jobs.headline} LIKE ${'%' + title + '%'}`
-    );
-    query = query.where(sql.join(titleConditions, ' OR '));
-  }
+  query = query.orderBy(jobs.publication_date, 'desc');
 
-  // Order newest first
-  query = query.orderBy(sql`${jobs.publication_date} DESC`);
+  console.log('Drizzle Query SQL:', query.toSQL?.() || 'Cannot get SQL');
+  console.log('Regions:', regions);
+  console.log('Job titles:', jobTitles);
+  console.log('Keyword:', keyword);
 
   const results = await query;
 

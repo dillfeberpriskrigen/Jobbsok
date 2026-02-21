@@ -314,15 +314,10 @@ function filterLocalResults() { // Vill jag ha kvar filtret?
 </script>
 <style>
   
-	body { font-family: Arial, sans-serif; margin: 20px; }
 	h2 { margin-top: 30px; }
-	.checkbox-group label { margin-right: 12px; }
 	table { border-collapse: collapse; width: 100%; margin-top: 10px; }
 	th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
 	button { margin-top: 10px; }
-	.job-detail { border: 1px solid #aaa; padding: 10px; margin-top: 20px; }
-	textarea { width: 100%; height: 120px; margin-top: 5px; }
-	.message { color: green; margin-top: 5px; }
 	button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 <button onclick={openSettings} style="float:right;">
@@ -451,7 +446,7 @@ Sök Britt-marie för fa-an!
   <td><a href={job.webpage_url} target="_blank">{job.headline}</a></td>
   <td>{job.employer_name}</td>
   <td>{job.municipality}</td>
-  <td>{job.application_deadline_simple}</td>
+  <td>{job.application_deadline}</td>
 </tr>
 {/each}
 	</tbody>
