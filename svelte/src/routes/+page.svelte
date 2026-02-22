@@ -309,7 +309,13 @@ function filterLocalResults() { // Vill jag ha kvar filtret?
 
 
   }
-
+function toggleReview(job) {
+  if (reviewList.some(j => j.id === job.id)) {
+    reviewList = reviewList.filter(j => j.id !== job.id);
+  } else {
+    reviewList = [...reviewList, job];
+  }
+}
 
 </script>
 <style>
@@ -429,19 +435,12 @@ Sök Britt-marie för fa-an!
 	{#each filteredResults as job}
 <tr>
   <td>
-    <input 
-      type="checkbox" 
-      bind:checked={job._selected}
-      onchange={() => {
-        if (job._selected && !reviewList.some(j => j.id === job.id)) {
-          // Add to reviewList immediately
-          reviewList = [...reviewList, job];
-        } else if (!job._selected) {
-          // Remove from reviewList if unchecked
-          reviewList = reviewList.filter(j => j.id !== job.id);
-        }
-      }}
-    />
+    <button
+  class="{reviewList.some(j => j.id === job.id) ? 'preset-filled-primary-500' : 'btn-outline'} small-btn"
+  onclick={() => toggleReview(job)}
+>
+  {reviewList.some(j => j.id === job.id) ? "Saved" : "Save"}
+</button>
   </td>
   <td><a href={job.webpage_url} target="_blank">{job.headline}</a></td>
   <td>{job.employer_name}</td>
