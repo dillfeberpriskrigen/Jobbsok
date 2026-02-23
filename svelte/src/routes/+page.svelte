@@ -49,15 +49,22 @@ import { onMount } from "svelte";
     showDetails = false;
     selectedJobDetail = null;
   }
-  onMount(async () => {
+onMount(async () => {
   try {
-    const res = await fetch("/api/user/inclusion-keywords");
+    // Fetch both include and exclude keywords
+    const res = await fetch("api/keywords");
     if (res.ok) {
       const data = await res.json();
-      jobTitlesList = data.map(k => k.keyword);
+      
+      // Separate them by type
+      const includeKeywords = data.filter(k => k.type === 'include');
+      const excludeKeywords = data.filter(k => k.type === 'exclude');
+      
+      // Use include keywords for jobTitlesList
+      jobTitlesList = includeKeywords.map(k => k.name);
     }
   } catch (err) {
-    console.error("Failed to load inclusion keywords", err);
+    console.error("Failed to load keywords", err);
   }
 });
 //Key handling TODO: Organisera dina funktioner
@@ -83,17 +90,26 @@ import { onMount } from "svelte";
   }
 
 
-function saveSelectedKeywords() {
+async function saveSelectedKeywords() {
   if (selectedKeywords.length === 0) return;
+
+  // Add each selected keyword to the database
+  for (const kw of selectedKeywords) {
+    try {
+      await fetch("api/user/keywords", {
+        method: "POST",
+        body: JSON.stringify({ name: kw, type: "include" })
+      });
+    } catch (err) {
+      console.error("Failed to save keyword:", kw, err);
+    }
+  }
 
   // Add new keywords to jobTitlesList if not already present
   const newKeywords = selectedKeywords.filter(kw => !jobTitlesList.includes(kw));
   if (newKeywords.length > 0) {
     jobTitlesList = [...jobTitlesList, ...newKeywords];
   }
-
-  // Add to selectedJobTitles
-  selectedJobTitles = [...selectedJobTitles, ...selectedKeywords.filter(kw => !selectedJobTitles.includes(kw))];
 
   // Clear input and selections
   searchKeyword = "";

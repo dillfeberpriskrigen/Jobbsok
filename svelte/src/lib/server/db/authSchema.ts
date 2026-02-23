@@ -83,7 +83,7 @@ export const keywords = mysqlTable(
   "keywords",
   {
     id: varchar("id", { length: 36 }).primaryKey(),
-    keyword: text("keyword"),
+    keyword: text("keyword").notNull(),
     type: varchar("type", { length: 10 }),
     userId: varchar("user_id", { length: 36 })
       .notNull()
