@@ -2,6 +2,7 @@
 import SettingsModal from "$lib/components/SettingsModal.svelte";
 import JobDetailModal from "$lib/components/JobDetailModal.svelte";
 import { onMount } from "svelte";
+import { eq } from "drizzle-orm";
 // Deklarationer
 
 	const regionsList = [
@@ -32,7 +33,7 @@ import { onMount } from "svelte";
 	let filterMessage = $state("");
 
     let parsedKeywords = $state([]);   
-	let filters = $state([]);   // 👈 store backend filters
+	let filters = $state([]);    
 
 	let selectedJobDetail = $state(null);
 	let aiPrompt = $state("");
@@ -52,7 +53,7 @@ import { onMount } from "svelte";
 onMount(async () => {
   try {
     // Fetch both include and exclude keywords
-    const res = await fetch("api/keywords");
+    const res = await fetch("api/user/keywords");
     if (res.ok) {
       const data = await res.json();
       
