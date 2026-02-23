@@ -98,3 +98,47 @@ export const accountRelations = relations(account, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+
+
+export const keywords = mysqlTable(
+  'keywords',
+  {
+    id: serial('id').primaryKey(),
+    userId: varchar('user_id', { length: 255 }).notNull(), 
+    keyword: text('keyword').notNull(),
+    type: varchar('type', { length: 10 }).notNull(), // 'include' | 'exclude'
+    createdAt: timestamp('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => ({
+    uniqueUserKeyword: uniqueIndex('unique_user_keyword').on(table.userId, table.keyword, table.type),
+  })
+);
+
+// ----------------- Saved Jobs -----------------
+export const savedJobs = mysqlTable(
+  'saved_jobs',
+  {
+    id: serial('id').primaryKey(),
+    userId: varchar('user_id', { length: 255 }).notNull(),
+    jobId: varchar('job_id', { length: 255 }).notNull(),
+    createdAt: timestamp('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => ({
+    uniqueUserJob: uniqueIndex('unique_user_job').on(table.userId, table.jobId),
+  })
+);
+
+// ----------------- Locations -----------------
+export const locations = mysqlTable(
+  'locations',
+  {
+    id: serial('id').primaryKey(),
+    userId: varchar('user_id', { length: 255 }).notNull(),
+    region: varchar('region', { length: 255 }).notNull(),
+    createdAt: timestamp('created_at').default(sql`CURRENT_TIMESTAMP`).notNull(),
+  },
+  (table) => ({
+    uniqueUserRegion: uniqueIndex('unique_user_region').on(table.userId, table.region),
+  })
+);

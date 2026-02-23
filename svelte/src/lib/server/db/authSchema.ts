@@ -79,6 +79,60 @@ export const verification = mysqlTable(
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
+export const keywords = mysqlTable(
+  "keywords",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    keyword: text("keyword"),
+    type: varchar("type", { length: 10 }),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("session_userId_idx").on(table.userId)],
+);
+
+export const savedJobs = mysqlTable(
+  "savedJobs",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    jobId: text("keyword"),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("session_userId_idx").on(table.userId)],
+);
+
+export const regions = mysqlTable('regions', {
+  id: varchar('id', { length: 36 }).primaryKey(), // UUID or code
+  name: varchar('name', { length: 255 }).notNull(),
+});
+
+export const municipalities = mysqlTable('municipalities', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  regionId: varchar('region_id', { length: 36 })
+    .notNull()
+    .references(() => regions.id, { onDelete: 'cascade' }),
+});
+export const locations = mysqlTable(
+  "locations",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    regionId: varchar("regionId", { length: 36 })
+    .notNull()
+    .references(() => regions.id, { onDelete: 'cascade' }),
+    municipalityId: varchar("municipalityId", { length: 36 })
+    .notNull()
+    .references(() => municipalities.id, { onDelete: 'cascade' }),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (table) => [index("session_userId_idx").on(table.userId)],
+);
+
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),

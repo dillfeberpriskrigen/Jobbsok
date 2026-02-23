@@ -10,14 +10,16 @@ import { onMount } from "svelte";
 		"Västmanlands län", "Gävleborgs län"
 	];
 
-	let jobTitlesList = $state([
-		"Snut", "ekonomi",
-		"strateg", "verksamhetsutvecklare"
-	]);
+  let { data } = $props();
+	let jobTitlesList = $state([]);
+	// // 	"Snut", "ekonomi",
+	//  	"strateg", "verksamhetsutvecklare"
+	//  ]);
 
 	// -----------------------------
 	// State
 	// -----------------------------
+  let user = null;
 	let selectedRegions = $state([]); //Det här borde läsas från databas
 	let selectedJobTitles = $state([]);
 
@@ -41,10 +43,23 @@ import { onMount } from "svelte";
   let extractedKeywords = $state([]);  // array of keywords
   let selectedKeywords = $state([]);   // which keywords are active for filtering
 
+
+
   function closeDetail() {
     showDetails = false;
     selectedJobDetail = null;
   }
+  onMount(async () => {
+  try {
+    const res = await fetch("/api/user/inclusion-keywords");
+    if (res.ok) {
+      const data = await res.json();
+      jobTitlesList = data.map(k => k.keyword);
+    }
+  } catch (err) {
+    console.error("Failed to load inclusion keywords", err);
+  }
+});
 //Key handling TODO: Organisera dina funktioner
    onMount(() => {
     const handleEsc = (e) => {
@@ -330,7 +345,12 @@ function toggleReview(job) {
 	⚙ Settings
 </button>
 
-
+{#if data.user}
+	<h1>Hi {data.user.name}, </h1>
+{:else}
+	<h1>Hi guest</h1>
+{/if}
+{JSON.stringify(data,null,2)}
 
 
 <div style="margin-top: 10px;">
