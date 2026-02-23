@@ -1,22 +1,21 @@
 // src/lib/server/db.ts
-import { drizzle } from 'drizzle-orm/mysql2';
 import { sql } from 'drizzle-orm';
+
+import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
-import * as schema from './db/schema';
-import * as authSchema from './db/authSchema'; 
+import * as jobSchema from './db/jobSchema';
+import * as authSchema from './db/authSchema';
 import { env } from '$env/dynamic/private';
 
 if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not set');
+if (!env.AUTH_DATABASE_URL) throw new Error('AUTH_DATABASE_URL is not set');
 
-// MySQL connection pool
-const client = mysql.createPool(env.DATABASE_URL);
+// Job DB pool
+const jobClient = mysql.createPool(env.DATABASE_URL);
+export const jobDb = drizzle(jobClient, { schema: jobSchema, mode:'default' });
 
-// Drizzle client - combine both schemas
-export const db = drizzle(client, { 
-  schema: {
-    ...schema,
-    ...authSchema
-  },
-  mode: 'default'
-});
+// Auth DB pool
+const authClient = mysql.createPool(env.AUTH_DATABASE_URL);
+export const authDb = drizzle(authClient, { schema: authSchema, mode:'default' });
+
 export { sql };

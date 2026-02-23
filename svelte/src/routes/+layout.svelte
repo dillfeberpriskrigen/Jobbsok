@@ -1,7 +1,6 @@
 
 <script lang="ts">
 import './layout.css';
-
 const { children } = $props();
 </script>
 <header>
@@ -12,6 +11,7 @@ It is a header of a test
 <a href=http://localhost:5173/demo/better-auth/login>Login</a>
 <a href=http://localhost:5173>Home</a>
 <a href=http://localhost:5173/about>About</a>
+
 </header>
 
 <footer><center>

@@ -2,7 +2,7 @@ import type { Handle } from '@sveltejs/kit';
 import { building } from '$app/environment';
 import { auth } from '$lib/server/auth';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
-import { db } from '$lib/server/db.ts';
+import { authDb } from '$lib/server/db.ts';
 import { keywords } from '$lib/server/db/authSchema.ts';
 const handleBetterAuth: Handle = async ({ event, resolve }) => {
 	const session = await auth.api.getSession({ headers: event.request.headers });

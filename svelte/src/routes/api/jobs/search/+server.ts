@@ -1,5 +1,5 @@
-import { db } from '$lib/server/db';
-import { jobs } from '$lib/server/db/schema';
+import { jobDb } from '$lib/server/db';
+import { jobs } from '$lib/server/db/jobSchema.ts';
 import { json } from '@sveltejs/kit';
 import { and, or, inArray, sql } from 'drizzle-orm';
 
@@ -30,7 +30,7 @@ export async function POST({ request }) {
     conditions.push(or(...titleConditions));
   }
 
-  let query = db.select().from(jobs);
+  let query = jobDb.select().from(jobs);
 
   if (conditions.length > 0) {
     query = query.where(and(...conditions));

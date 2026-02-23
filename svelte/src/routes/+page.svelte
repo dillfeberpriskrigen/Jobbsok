@@ -2,7 +2,6 @@
 import SettingsModal from "$lib/components/SettingsModal.svelte";
 import JobDetailModal from "$lib/components/JobDetailModal.svelte";
 import { onMount } from "svelte";
-import { eq } from "drizzle-orm";
 // Deklarationer
 
 	const regionsList = [
@@ -13,9 +12,8 @@ import { eq } from "drizzle-orm";
 
   let { data } = $props();
 	let jobTitlesList = $state([]);
-	// // 	"Snut", "ekonomi",
-	//  	"strateg", "verksamhetsutvecklare"
-	//  ]);
+  let newKeyword = '';
+  let newType = 'include';
 
 	// -----------------------------
 	// State
@@ -33,7 +31,6 @@ import { eq } from "drizzle-orm";
 	let filterMessage = $state("");
 
     let parsedKeywords = $state([]);   
-	let filters = $state([]);    
 
 	let selectedJobDetail = $state(null);
 	let aiPrompt = $state("");
@@ -50,24 +47,74 @@ import { eq } from "drizzle-orm";
     showDetails = false;
     selectedJobDetail = null;
   }
-onMount(async () => {
-  try {
-    // Fetch both include and exclude keywords
-    const res = await fetch("api/user/keywords");
-    if (res.ok) {
+async function loadKeywords() {
+    console.log('[DEBUG][Frontend] Loading keywords...');
+    try {
+      const res = await fetch('/api/user/keywords');
+      if (!res.ok) throw new Error('Failed to fetch keywords');
       const data = await res.json();
-      
-      // Separate them by type
+      console.log('[DEBUG][Frontend] Fetched keywords:', data);
+
       const includeKeywords = data.filter(k => k.type === 'include');
-      const excludeKeywords = data.filter(k => k.type === 'exclude');
-      
-      // Use include keywords for jobTitlesList
-      jobTitlesList = includeKeywords.map(k => k.name);
+      jobTitlesList = includeKeywords.map(k => k.keyword);
+    } catch (err) {
+      console.error('[DEBUG][Frontend] Error loading keywords:', err);
     }
-  } catch (err) {
-    console.error("Failed to load keywords", err);
   }
-});
+
+  onMount(loadKeywords);
+
+    async function addKeyword() {
+    if (!newKeyword.trim()) return;
+
+    console.log('[DEBUG][Frontend] Adding keyword:', newKeyword, 'type:', newType);
+
+    try {
+      const res = await fetch('/api/user/keywords', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keyword: newKeyword, type: newType }) // ✅ send "keyword"
+      });
+
+      if (!res.ok) throw new Error('Failed to add keyword');
+
+      const inserted = await res.json();
+      console.log('[DEBUG][Frontend] Keyword inserted:', inserted);
+
+      // Only add "include" keywords to jobTitlesList
+      if (inserted.type === 'include') {
+        jobTitlesList = [...jobTitlesList, inserted.keyword];
+      }
+
+      newKeyword = ''; // clear input
+    } catch (err) {
+      console.error('[DEBUG][Frontend] Error adding keyword:', err);
+    }
+  }
+
+  async function deleteKeyword(keywordObj) {
+    console.log('[DEBUG][Frontend] Deleting keyword:', keywordObj);
+
+    try {
+      const res = await fetch('/api/user/keywords', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywordId: keywordObj.id })
+      });
+
+      if (!res.ok) throw new Error('Failed to delete keyword');
+
+      const result = await res.json();
+      console.log('[DEBUG][Frontend] Delete result:', result);
+
+      // Remove from local list
+      jobTitlesList = jobTitlesList.filter(k => k !== keywordObj.keyword);
+    } catch (err) {
+      console.error('[DEBUG][Frontend] Error deleting keyword:', err);
+    }
+  }
+
+
 //Key handling TODO: Organisera dina funktioner
    onMount(() => {
     const handleEsc = (e) => {
@@ -89,37 +136,6 @@ onMount(async () => {
     // Reset selectedKeywords
     selectedKeywords = [];
   }
-
-
-async function saveSelectedKeywords() {
-  if (selectedKeywords.length === 0) return;
-
-  // Add each selected keyword to the database
-  for (const kw of selectedKeywords) {
-    try {
-      await fetch("api/user/keywords", {
-        method: "POST",
-        body: JSON.stringify({ name: kw, type: "include" })
-      });
-    } catch (err) {
-      console.error("Failed to save keyword:", kw, err);
-    }
-  }
-
-  // Add new keywords to jobTitlesList if not already present
-  const newKeywords = selectedKeywords.filter(kw => !jobTitlesList.includes(kw));
-  if (newKeywords.length > 0) {
-    jobTitlesList = [...jobTitlesList, ...newKeywords];
-  }
-
-  // Clear input and selections
-  searchKeyword = "";
-  extractedKeywords = [];
-  selectedKeywords = [];
-}
-
-
-
 
 function copyPrompt() {
     navigator.clipboard.writeText(aiPrompt);
@@ -165,34 +181,9 @@ onMount(() => {
 	};
 });
 
-async function fetchNewJobs() { // TODO: 
-    const params = {
-        region: selectedRegions, 
-        q: selectedJobTitles.map(j => `"${j}"`).join(" OR "),
-        limit: 50
-    };
 
-    try {
-        const res = await fetch("api/jobs/search", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(params)
-        });
-        const data = await res.json();
 
-        if (data.ok) {
-            allResults = data.jobs.map(job => ({ ...job, _selected: false }));
-            filteredResults = [...allResults];
-            filterMessage = `Fetched ${data.jobs.length} new jobs!`;
-            setTimeout(() => filterMessage = "", 3000);
-        }
-    } catch (err) {
-        console.error(err);
-        filterMessage = "Failed to fetch new jobs.";
-    }
-}
-
-async function searchStoredJobs() {
+async function searchStoredJobs() { // Min nuvarande sök
     if (selectedJobTitles.length === 0) return;
 
     const params = {
@@ -243,104 +234,6 @@ function closeSettings() {
 	showSettings = false;
 }
 
-
-
-
-// Start filter
-	async function loadFilters() {
-  try {
-    const res = await fetch("http://localhost:3000/filters");
-    filters = await res.json();
-  } catch (err) {
-    console.error("Failed loading filters", err);
-  }
-}
-
-onMount(() => {
-  loadFilters();
-});
-
-
-function filterLocalResults() { // Vill jag ha kvar filtret? 
-    const excludeFilters = filters
-        .filter(f => f.type === "exclude")
-        .map(f => f.value.toLowerCase());
-
-    filteredResults = allResults.filter(job =>
-        selectedRegions.includes(job.region) && 
-        selectedJobTitles.some(t =>
-            job.headline?.toLowerCase().includes(t.toLowerCase())
-        ) &&
-        !excludeFilters.some(f =>
-            job.headline?.toLowerCase().includes(f)
-        ) &&
-        (!searchKeyword ||
-            job.headline?.toLowerCase().includes(searchKeyword.toLowerCase()))
-    );
-}
-
-	async function addJobFilter() {
-		const value = newFilterInput.trim();
-		if (!value) {
-			filterMessage = "Enter filter value";
-			return;
-		}
-
-		try {
-			const res = await fetch("http://localhost:3000/filters", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					value,
-					field: "headline",
-					type: "exclude"
-				})
-			});
-
-			const data = await res.json();
-
-			if (data.ok) {
-				filterMessage = `Filter "${value}" added!`;
-				newFilterInput = "";
-				await loadFilters(); // refresh list
-			} else {
-				filterMessage = data.message;
-			}
-
-		} catch {
-			filterMessage = "Failed to add filter.";
-		}
-
-		setTimeout(() => filterMessage = "", 3000);
-	}
-
-	async function deleteFilter(id) {
-		try {
-			await fetch(`http://localhost:3000/filters/${id}`, {
-				method: "DELETE"
-			});
-			await loadFilters();
-		} catch (err) {
-			console.error("Failed deleting filter", err);
-		}
-	}
-
-// Slut filter sektion
-// Nuvarande filter funktion TODO: Fixa. Är inte det här min nuvarande sökfunktion?
-  function filterJobsByKeywords() {
-    parsedKeywords = searchKeyword
-      .split(/[,;]+/)
-      .map(k => k.trim().toLowerCase())
-      .filter(k => k.length > 0);
-
-    filteredResults = allResults.filter(job =>
-      parsedKeywords.every(keyword =>
-        job.headline?.toLowerCase().includes(keyword)
-      )
-    );
-
-
-  }
 function toggleReview(job) {
   if (reviewList.some(j => j.id === job.id)) {
     reviewList = reviewList.filter(j => j.id !== job.id);
@@ -361,14 +254,21 @@ function toggleReview(job) {
 <button onclick={openSettings} style="float:right;">
 	⚙ Settings
 </button>
-
 {#if data.user}
 	<h1>Hi {data.user.name}, </h1>
 {:else}
 	<h1>Hi guest</h1>
 {/if}
-{JSON.stringify(data,null,2)}
 
+
+
+<h3>Add Keyword</h3>
+<input bind:value={newKeyword} placeholder="Keyword" />
+<select bind:value={newType}>
+  <option value="include">Include</option>
+  <option value="exclude">Exclude</option>
+</select>
+<button onclick={addKeyword}>Add</button>
 
 <div style="margin-top: 10px;">
   <input
@@ -516,7 +416,6 @@ Sök Britt-marie för fa-an!
 {#if showSettings}
   <SettingsModal
     open={showSettings}
-    filters={filters}
     deleteFilter={deleteFilter}
     onclose={closeSettings}
     onfetch={fetchNewJobs}

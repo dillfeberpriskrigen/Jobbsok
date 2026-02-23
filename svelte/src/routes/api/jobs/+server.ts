@@ -1,6 +1,6 @@
-import { db } from '$lib/server/db'
+import { jobDb } from '$lib/server/jobdb'
 
 export async function GET() {
-  const jobs = await db.query.jobs.findMany()
+  const jobs = await jobDb.query.jobs.findMany()
   return Response.json(jobs)
 }
