@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ locals }) => {
       where: eq(keywords.userId, locals.user.id),
     });
 
-    console.log('[DEBUG][GET] Fetched keywords:', result);
+   // console.log('[DEBUG][GET] Fetched keywords:', result);
     return json(result);
   } catch (err) {
     console.error('[DEBUG][GET] Error fetching keywords:', err);

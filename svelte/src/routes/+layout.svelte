@@ -14,9 +14,19 @@ It is a header of a test
 
 </header>
 
-<footer><center>
+{@render children()}
+
+<footer>
 
 The hobbits. In isengard
 
-</center></footer>
-{@render children()}
+</footer>
+
+<style>
+footer{padding: 20px;
+text-align: center;
+position:fixed;
+bottom:0;
+width:100%;}
+
+</style>

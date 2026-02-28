@@ -1,12 +1,30 @@
-<script>
-  export let job = null;
-  export let aiPrompt = "";
-  export let onclose;
-  export let oncopy;
+<script lang="ts">
+  interface Job {
+    id: string;
+    headline: string;
+    employer_name: string;
+    municipality: string;
+    application_deadline_simple: string;
+    description: string;
+    webpage_url: string;
+  }
+
+  export let job: Job | null = null;
+  export let aiPrompt: string = "";
+  export let onclose: () => void;
+  export let oncopy: () => void;
 </script>
 
-<div class="modal-backdrop" on:click={onclose}>
-  <div class="modal-content" on:click|stopPropagation>
+<div class="modal-backdrop" on:click={onclose}
+ role="button"
+     tabindex="0"
+     on:click={close}
+     on:keydown={(e) => e.key === 'Enter' && close()}>
+    
+  <div class="modal-content" 
+   role="dialog"
+       tabindex="0">
+  on:click|stopPropagation>
     {#if job}
       <h3>
         <a href={job.webpage_url} target="_blank" rel="noopener noreferrer">
@@ -30,7 +48,6 @@
     {/if}
   </div>
 </div>
-
 <style>
 .modal-backdrop {
   position: fixed;

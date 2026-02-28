@@ -119,7 +119,7 @@ export const municipalities = mysqlTable('municipalities', {
 export const locations = mysqlTable(
   "locations",
   {
-    id: varchar("id", { length: 36 }).primaryKey(),
+    id: varchar("id", { length: 37 }).primaryKey(),
     regionId: varchar("regionId", { length: 36 })
     .notNull()
     .references(() => regions.id, { onDelete: 'cascade' }),
@@ -150,5 +150,21 @@ export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
     references: [user.id],
+  }),
+}));
+export const keywordsRelations = relations(keywords, ({ one }) => ({
+  user: one(user, {
+    fields: [keywords.userId],
+    references: [user.id],
+  }),
+}));
+export const regionsRelations = relations(regions, ({ many }) => ({
+  municipalities: many(municipalities), // region.municipalities will work in JS
+}));
+
+export const municipalitiesRelations = relations(municipalities, ({ one }) => ({
+  region: one(regions, {
+    fields: [municipalities.regionId], // JS property that stores the foreign key
+    references: [regions.id],          // points to regions.id
   }),
 }));
