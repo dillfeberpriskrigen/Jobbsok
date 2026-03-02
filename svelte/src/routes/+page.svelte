@@ -3,8 +3,13 @@ import SettingsModal from "$lib/components/SettingsModal.svelte";
 import JobDetailModal from "$lib/components/JobDetailModal.svelte";
 import LocationModal from "$lib/components/LocationSearchModal.svelte";
 import { onMount } from "svelte";
-import type { jobs } from "$lib/server/db/jobSchema"
+import type { InferSelectModel } from "drizzle-orm";
+import { jobs } from "$lib/server/db/jobSchema"
 // Deklarationer
+type Job = InferSelectModel<typeof jobs> & {
+  _selected?: boolean;
+  application_deadline_simple?: string;
+};
 type keyword = {
   id: string;
   keyword: string;
@@ -36,8 +41,8 @@ let availableMunicipalities = $state(new Set<string>());
 	let selectedRegions = $state<Region[]>([]); //Den här borde nu vara den lista som kommer från modalen eller.. läsas från local?
 	let selectedJobTitles = $state<string[]>([]); //Tror det här borde vara type job.id? 
 
-	let filteredResults = $state<jobs[]>([]);
-  let reviewList = $state<jobs[]>([]);
+	let filteredResults = $state<Job[]>([]);
+  let reviewList = $state<Job[]>([]);
 
 	let searchKeyword = $state("");
 
@@ -93,7 +98,7 @@ const displayedLocations = $derived<Location[]>([
     .filter((m): m is Municipality => Boolean(m))
     .map(m => ({ id: m.id, label: m.name, type: "municipality" }))
 ]);
-const activeDisplayedLocations = $derived<Location[]>(() => [
+const activeDisplayedLocations = $derived.by((): Location[] => [
   ...Array.from(activeRegions)
     .map(id => regions.find(r => r.id === id))
     .filter((r): r is Region => Boolean(r))
@@ -106,7 +111,7 @@ const activeDisplayedLocations = $derived<Location[]>(() => [
 ]);
   async function performSearch() {
     const payload = {
-      regions: [...selectedRegions, ...selectedMunicipalities], //Todo: Kolla hur modalen returnerar valda kommuner
+      regions: [...activeRegions, ...activeMunicipalities],
       jobTitles: [],
       keyword: searchKeyword
     };
@@ -287,7 +292,7 @@ function copyPrompt() {
   }
 }
 
-function showJobDetail(job: jobs) {
+function showJobDetail(job: Job) {
   selectedJobDetail = job; // only now the modal shows
   showDetails = true;
 }
@@ -346,7 +351,7 @@ function closeSettings() {
 	showSettings = false;
 }
 
-function toggleReview(job:jobs) {
+function toggleReview(job: Job) {
   if (reviewList.some(j => j.id === job.id)) {
     reviewList = reviewList.filter(j => j.id !== job.id);
   } else {
@@ -548,7 +553,7 @@ Sök Britt-marie för fa-an!
   <JobDetailModal
     job={selectedJobDetail}
     aiPrompt={aiPrompt}
-    on:close={closeDetail}
+    onclose={closeDetail}
     oncopy={copyPrompt}
   />
 {/if}

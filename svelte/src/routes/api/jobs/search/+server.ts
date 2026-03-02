@@ -1,8 +1,8 @@
 // src/routes/api/jobs/search/+server.ts
 import { jobDb } from '$lib/server/db';
-import { jobs } from '$lib/server/db/jobSchema.ts';
+import { jobs } from '$lib/server/db/jobSchema';
 import { json } from '@sveltejs/kit';
-import { and, or, inArray, sql } from 'drizzle-orm';
+import { and, desc, inArray, or, sql } from 'drizzle-orm';
 
 export async function POST({ request }) {
   try {
@@ -55,13 +55,9 @@ export async function POST({ request }) {
       conditions.push(or(...titleConditions));
     }
 
-    // Build query
-    let query = jobDb.select().from(jobs);
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    query = query.orderBy(jobs.publication_date, 'desc');
+    const query = conditions.length > 0
+      ? jobDb.select().from(jobs).where(and(...conditions)).orderBy(desc(jobs.publication_date))
+      : jobDb.select().from(jobs).orderBy(desc(jobs.publication_date));
 
     // Debug final SQL
     console.log('Drizzle Query SQL:', query.toSQL?.() || 'Cannot get SQL');

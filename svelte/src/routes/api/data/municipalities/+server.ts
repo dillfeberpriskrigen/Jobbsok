@@ -2,7 +2,7 @@
 
 import { json } from '@sveltejs/kit';
 import { authDb } from '$lib/server/db';
-import { municipalities } from '$lib/server/db/authSchema.ts';
+import { municipalities } from '$lib/server/db/authSchema';
 
 export async function GET() {
   console.log('[DEBUG][GET] /api/municipalities called');

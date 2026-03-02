@@ -3,7 +3,7 @@ import { authDb } from '$lib/server/db';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { locations } from '$lib/server/db/authSchema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import crypto from 'crypto';
 
 /**
@@ -86,9 +86,9 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
 
   try {
     const result = await authDb.delete(locations)
-      .where(eq(locations.id, locationId), eq(locations.userId, locals.user.id));
+      .where(and(eq(locations.id, locationId), eq(locations.userId, locals.user.id)));
 
-    if (result.rowsAffected === 0) throw error(404, 'Location not found or unauthorized');
+    if (!result) throw error(404, 'Location not found or unauthorized');
 
     console.log('[DEBUG][DELETE] Successfully deleted location:', locationId);
     return json({ success: true });

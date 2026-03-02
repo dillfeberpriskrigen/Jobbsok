@@ -2,7 +2,7 @@ import { authDb } from '$lib/server/db';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { keywords } from '$lib/server/db/authSchema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 // ---------------------------
 // GET all keywords for the logged-in user
@@ -92,11 +92,9 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
   try {
     // Delete only if it belongs to the logged-in user
     const result = await authDb.delete(keywords)
-      .where(eq(keywords.id, keywordId), eq(keywords.userId, locals.user.id));
+      .where(and(eq(keywords.id, keywordId), eq(keywords.userId, locals.user.id)));
 
-    console.log('[DEBUG][DELETE] Rows affected:', result.rowsAffected);
-
-    if (result.rowsAffected === 0) throw error(404, 'Keyword not found or unauthorized');
+    if (!result) throw error(404, 'Keyword not found or unauthorized');
 
     console.log('[DEBUG][DELETE] Successfully deleted keyword:', keywordId);
     return json({ success: true });

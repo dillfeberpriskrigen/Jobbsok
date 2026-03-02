@@ -2,7 +2,7 @@
 
 import { json } from '@sveltejs/kit';
 import { authDb } from '$lib/server/db';
-import { regions } from '$lib/server/db/authSchema.ts';
+import { regions } from '$lib/server/db/authSchema';
 
 export async function GET() {
   console.log('[DEBUG][GET] /api/data/regions called');
