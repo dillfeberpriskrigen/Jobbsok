@@ -34,7 +34,7 @@ function isActive(path: string) {
 				</a>
 			{/each}
 
-			<a class="auth-link" href={data.user ? '/demo/better-auth' : '/demo/better-auth/login'}>
+			<a class="auth-link" href="/account">
 				{data.user ? data.user.name : 'Login'}
 			</a>
 		</nav>
@@ -86,18 +86,7 @@ function isActive(path: string) {
 		gap: 1rem;
 	}
 
-	.brand-mark {
-		display: grid;
-		place-items: center;
-		width: 3rem;
-		height: 3rem;
-		border-radius: 0.9rem;
-		background: linear-gradient(135deg, #0f766e 0%, #2563eb 100%);
-		color: white;
-		font-weight: 700;
-		text-decoration: none;
-		letter-spacing: 0.08em;
-	}
+
 
 	.brand-copy h1,
 	.brand-copy p {

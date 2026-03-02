@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import JobDetailModal from "$lib/components/JobDetailModal.svelte";
   import JobSelectionModal from "$lib/components/JobSelectionModal.svelte";
   import LocationModal from "$lib/components/LocationSearchModal.svelte";
   import type { Job } from "$lib/server/db/jobTypes";
   import type { LocationSelection, MunicipalityOption, RegionOption } from "$lib/types/location";
+  import type { UserPrompt } from "$lib/types/prompt";
 
   type GroupedLocations = {
     region: LocationSelection;
@@ -33,22 +35,24 @@
   let availableRegions = $state(new Set<string>());
   let availableMunicipalities = $state(new Set<string>());
   let locationError = $state("");
-  let jobTitlesList = $state<string[]>([]);
+  let jobTitleOptions = $state<string[]>([]);
   let selectedJobTitles = $state<string[]>([]);
   let searchKeyword = $state("");
   let filteredResults = $state<SearchJob[]>([]);
   let reviewList = $state<SearchJob[]>([]);
   let selectedJobDetail = $state<SearchJob | null>(null);
+  let savedPrompts = $state<UserPrompt[]>([]);
   let showDetails = $state(false);
   let keywordsError = $state("");
   let searchError = $state("");
   let reviewError = $state("");
 
   onMount(async () => {
-    const [regionsResponse, municipalitiesResponse, savedLocationsResponse] = await Promise.all([
+    const [regionsResponse, municipalitiesResponse, savedLocationsResponse, jobTitlesResponse] = await Promise.all([
       fetch("/api/data/regions"),
       fetch("/api/data/municipalities"),
-      fetch("/api/user/locations")
+      fetch("/api/user/locations"),
+      fetch("/api/jobs/titles")
     ]);
 
     regions = await regionsResponse.json();
@@ -60,7 +64,14 @@
       locationError = "Failed to load saved locations.";
     }
 
+    if (jobTitlesResponse.ok) {
+      jobTitleOptions = await jobTitlesResponse.json();
+    } else {
+      keywordsError = "Failed to load job title suggestions.";
+    }
+
     await loadKeywords();
+    await loadPrompts();
     await loadSavedJobs();
   });
 
@@ -111,8 +122,7 @@
       .map((keyword) => keyword.keyword.trim())
       .filter(Boolean);
 
-    jobTitlesList = includeKeywords;
-    selectedJobTitles = selectedJobTitles.filter((title) => includeKeywords.includes(title));
+    selectedJobTitles = includeKeywords;
   }
 
   async function addKeyword(keywordInput: string, type: "include" | "exclude") {
@@ -139,8 +149,8 @@
     }
 
     const inserted = await response.json() as Keyword;
-    if (inserted.type === "include" && !jobTitlesList.includes(inserted.keyword)) {
-      jobTitlesList = [...jobTitlesList, inserted.keyword];
+    if (inserted.type === "include" && !jobTitleOptions.includes(inserted.keyword)) {
+      jobTitleOptions = [...jobTitleOptions, inserted.keyword].sort((a, b) => a.localeCompare(b));
     }
 
     return inserted.type === "include" ? inserted.keyword : keyword;
@@ -163,6 +173,25 @@
   function closeDetail() {
     selectedJobDetail = null;
     showDetails = false;
+  }
+
+  async function loadPrompts() {
+    const response = await fetch("/api/user/prompts");
+
+    if (!response.ok) {
+      if (response.status !== 401) {
+        reviewError = "Failed to load saved prompts.";
+      }
+      savedPrompts = [];
+      return;
+    }
+
+    const data = await response.json() as UserPrompt[];
+    savedPrompts = Array.isArray(data) ? data : [];
+  }
+
+  function copyPrompt(payload: string) {
+    navigator.clipboard.writeText(payload);
   }
 
   async function searchJobs() {
@@ -213,7 +242,7 @@
     const savedRows = await savedResponse.json() as Array<{ jobId: string }>;
     const jobIds = savedRows.map((row) => row.jobId).filter(Boolean);
 
-    if (jobIds.length === 0) {
+  if (jobIds.length === 0) {
       reviewList = [];
       return;
     }
@@ -368,12 +397,12 @@
 <section class="debug-page">
   <div class="page-intro">
     <p class="eyebrow">Debug Workspace</p>
-    <h2>Search & Select Locations</h2>
-    <p class="page-copy">Test persisted selections, region toggles, and municipality coverage from one place.</p>
+    <h2>Geografisk plats</h2>
+    <p class="page-copy">Välj var du vill söka jobb någonstan.</p>
   </div>
 
   <button class="open-modal-button" onclick={() => showModal = true}>
-  Open Location Modal
+  Välj kommun/region! 
   </button>
 
   {#if locationError}
@@ -414,16 +443,16 @@
       {/each}
     </div>
   {:else}
-    <p class="empty-state">No locations selected yet.</p>
+    <p class="empty-state">Du har ännu inte valt några platser.</p>
   {/if}
 
   <section class="tool-panel">
     <div class="section-heading">
-      <h3>Job Titles</h3>
-      <p>Pick the title families you want included in search requests.</p>
+      <h3>Jobb titlar</h3>
+      <p>Välj titlarna du vill söka på.</p>
     </div>
 
-    <button type="button" class="action-button" onclick={() => showJobModal = true}>Open Job Selection</button>
+    <button type="button" class="action-button" onclick={() => showJobModal = true}>Välj jobbtitlar här.</button>
 
     {#if keywordsError}
       <p class="error-message">{keywordsError}</p>
@@ -438,19 +467,19 @@
         {/each}
       </div>
     {:else}
-      <p class="empty-state">No job titles selected yet.</p>
+      <p class="empty-state">Ännu inga valda titlar.</p>
     {/if}
   </section>
 
   <section class="tool-panel">
     <div class="section-heading">
-      <h3>Search</h3>
-      <p>Search stored jobs using active regions and selected keyword chips.</p>
+      <h3>Sök!</h3>
+      <p>Sök de valda kombinationerna</p>
     </div>
 
     <div class="search-controls">
       <input bind:value={searchKeyword} placeholder="Optional headline keyword" />
-      <button type="button" class="action-button tertiary" onclick={searchJobs}>Search Jobs</button>
+      <button type="button" class="action-button tertiary" onclick={searchJobs}>Tryck för att starta sökningen!</button>
     </div>
 
     {#if searchError}
@@ -468,8 +497,8 @@
 
   <section class="tool-panel">
     <div class="section-heading">
-      <h3>Search Results</h3>
-      <p>Review results and stage jobs for closer inspection.</p>
+      <h3>Sökresultat</h3>
+      <p>Spara de jobb som är intressanta!</p>
     </div>
 
     {#if filteredResults.length > 0}
@@ -477,11 +506,11 @@
         <table>
           <thead>
             <tr>
-              <th>Review</th>
-              <th>Headline</th>
-              <th>Employer</th>
-              <th>Municipality</th>
-              <th>Deadline</th>
+              <th>Spara</th>
+              <th>Jobb</th>
+              <th>Arbetsgivare</th>
+              <th>Kommun</th>
+              <th>Ansökningsdeadline</th>
             </tr>
           </thead>
           <tbody>
@@ -506,14 +535,13 @@
         </table>
       </div>
     {:else}
-      <p class="empty-state">No search results yet.</p>
+      <p class="empty-state">Ännu inga sökresultat.</p>
     {/if}
   </section>
 
   <section class="tool-panel">
     <div class="section-heading">
-      <h3>Review List</h3>
-      <p>Inspect the jobs you have staged from the search results.</p>
+      <h3>Sparade jobb</h3>
     </div>
 
     {#if reviewList.length > 0}
@@ -548,25 +576,6 @@
     {/if}
   </section>
 
-  {#if showDetails && selectedJobDetail}
-    <section class="tool-panel detail-panel">
-      <div class="detail-header">
-        <div>
-          <p class="eyebrow">Job Detail</p>
-          <h3>{selectedJobDetail.headline}</h3>
-        </div>
-        <button type="button" class="table-action active" onclick={closeDetail}>Close</button>
-      </div>
-
-      <p><strong>Employer:</strong> {selectedJobDetail.employer_name}</p>
-      <p><strong>Municipality:</strong> {selectedJobDetail.municipality}</p>
-      <p><strong>Deadline:</strong> {selectedJobDetail.application_deadline_simple ?? selectedJobDetail.application_deadline ?? ""}</p>
-      <p><strong>Link:</strong> <a href={selectedJobDetail.webpage_url ?? "#"} target="_blank" rel="noreferrer">Open listing</a></p>
-      <div class="job-description">
-        {selectedJobDetail.description}
-      </div>
-    </section>
-  {/if}
 </section>
 
 <LocationModal
@@ -580,13 +589,22 @@
 
 <JobSelectionModal
   open={showJobModal}
-  availableTitles={jobTitlesList}
+  availableTitles={jobTitleOptions}
   selectedTitles={selectedJobTitles}
   keywordError={keywordsError}
   onSave={saveJobSelection}
   onClose={() => showJobModal = false}
   onAddKeyword={addKeyword}
 />
+
+{#if showDetails && selectedJobDetail}
+  <JobDetailModal
+    job={selectedJobDetail}
+    prompts={savedPrompts}
+    onclose={closeDetail}
+    oncopy={copyPrompt}
+  />
+{/if}
 
 <style>
   .debug-page {
@@ -813,30 +831,6 @@
 
   .table-action.active {
     background: var(--color-secondary-500);
-  }
-
-  .detail-panel {
-    gap: 0.75rem;
-  }
-
-  .detail-header {
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-    align-items: flex-start;
-  }
-
-  .detail-header h3,
-  .detail-header p {
-    margin: 0;
-  }
-
-  .job-description {
-    padding: 1rem;
-    border-radius: 1rem;
-    background: var(--color-surface-800);
-    border: 1px solid var(--color-surface-600);
-    white-space: pre-wrap;
   }
 
   @media (hover: hover) and (pointer: fine) {

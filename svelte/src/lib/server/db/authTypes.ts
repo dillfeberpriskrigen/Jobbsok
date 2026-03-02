@@ -4,6 +4,7 @@ import {
   keywords,
   locations,
   municipalities,
+  prompts,
   regions,
   savedJobs,
   session,
@@ -25,6 +26,9 @@ export type NewVerification = InferInsertModel<typeof verification>;
 
 export type Keyword = InferSelectModel<typeof keywords>;
 export type NewKeyword = InferInsertModel<typeof keywords>;
+
+export type Prompt = InferSelectModel<typeof prompts>;
+export type NewPrompt = InferInsertModel<typeof prompts>;
 
 export type SavedJob = InferSelectModel<typeof savedJobs>;
 export type NewSavedJob = InferInsertModel<typeof savedJobs>;
@@ -52,6 +56,10 @@ export type AccountWithUser = Account & {
 };
 
 export type KeywordWithUser = Keyword & {
+  user?: User;
+};
+
+export type PromptWithUser = Prompt & {
   user?: User;
 };
 

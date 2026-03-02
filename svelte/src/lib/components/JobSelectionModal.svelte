@@ -49,7 +49,7 @@
   });
 
   const filteredTitles = $derived.by(() =>
-    availableTitles.filter((title) =>
+    [...new Set([...tempSelectedTitles, ...availableTitles])].filter((title) =>
       title.toLowerCase().includes(titleSearch.toLowerCase())
     )
   );

@@ -1,9 +1,9 @@
 <script lang=ts>
-import SettingsModal from "$lib/components/SettingsModal.svelte";
 import JobDetailModal from "$lib/components/JobDetailModal.svelte";
 import LocationModal from "$lib/components/LocationSearchModal.svelte";
 import { onMount } from "svelte";
 import type { jobs } from "$lib/server/db/jobSchema"
+import type { UserPrompt } from "$lib/types/prompt";
 // Deklarationer
 type keyword = {
   id: string;
@@ -43,9 +43,8 @@ let availableMunicipalities = $state(new Set<string>());
 
 
 	let selectedJobDetail = $state(null);
-	let aiPrompt = $state("");
+	let savedPrompts = $state<UserPrompt[]>([]);
 
-  let showSettings = $state(false);
   let showDetails = $state(false);
 
   let selectedKeywords = $state<keyword[]>([]);   // which keywords are active for filtering
@@ -262,8 +261,8 @@ async function saveSelectedKeywords() {
      
 
 
-function copyPrompt() {
-    navigator.clipboard.writeText(aiPrompt);
+function copyPrompt(payload: string) {
+    navigator.clipboard.writeText(payload);
   }
 
 
@@ -290,6 +289,27 @@ function copyPrompt() {
 function showJobDetail(job: jobs) {
   selectedJobDetail = job; // only now the modal shows
   showDetails = true;
+}
+
+async function loadPrompts() {
+  try {
+    const res = await fetch("/api/user/prompts");
+
+    if (res.status === 401) {
+      savedPrompts = [];
+      return;
+    }
+
+    if (!res.ok) {
+      throw new Error("Failed to fetch prompts");
+    }
+
+    const data = await res.json();
+    savedPrompts = Array.isArray(data) ? data : [];
+  } catch (err) {
+    console.error("[ERROR] Failed to load prompts:", err);
+    savedPrompts = [];
+  }
 }
 
 
@@ -338,14 +358,6 @@ function toggleAllJobTitles() {
   }
 }
 
-function openSettings() {
-	showSettings = true;
-}
-
-function closeSettings() {
-	showSettings = false;
-}
-
 function toggleReview(job:jobs) {
   if (reviewList.some(j => j.id === job.id)) {
     reviewList = reviewList.filter(j => j.id !== job.id);
@@ -355,6 +367,7 @@ function toggleReview(job:jobs) {
 }
 
 onMount(loadKeywords);
+onMount(loadPrompts);
   onMount(async () => {
     regions = await fetch("/api/data/regions").then(r => r.json()); //De här laddas till min modal.. Det borde de inte göra? Eller? 
     municipalities = await fetch("/api/data/municipalities").then(r => r.json());
@@ -374,8 +387,9 @@ onMount(() => {
 onMount(() => {
 	const handleKey = (e: KeyboardEvent) => {
 		if (e.key === "Escape") {
-			showSettings = false;
-		}
+      showDetails = false;
+      selectedJobDetail = null;
+    }
 	};
 
 	window.addEventListener("keydown", handleKey);
@@ -395,9 +409,6 @@ onMount(() => {
 	button { margin-top: 10px; }
 	button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
-<button onclick={openSettings} style="float:right;">
-	⚙ Settings
-</button>
 {#if data.user}
 	<h1>Hi {data.user.name}, </h1>
 {:else}
@@ -536,19 +547,12 @@ Sök Britt-marie för fa-an!
 	{/each}
 	</tbody>
 </table>
-{#if showSettings}
-  <SettingsModal
-    open={showSettings}
-    //deleteFilter={deleteFilter}
-    on:close={closeSettings}
-  />
-{/if}
 
 {#if showDetails}
   <JobDetailModal
     job={selectedJobDetail}
-    aiPrompt={aiPrompt}
-    on:close={closeDetail}
+    prompts={savedPrompts}
+    onclose={closeDetail}
     oncopy={copyPrompt}
   />
 {/if}

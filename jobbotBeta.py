@@ -7,14 +7,6 @@
 #Author:				#
 #Email:					#
 #########################################
-#!/usr/bin/python3
-
-#########################################
-# Script Name: jobtech_scraper.py
-# Description: Fetch jobs from JobTech API with full/diff mode
-# Author: Your Name
-# Email: your.email@example.com
-#########################################
 
 import sys
 import time
@@ -38,7 +30,7 @@ HEADERS = {
 }
 
 FETCH_PARAMS_TEMPLATE = {
-    "jobTitles": [""],  # example job titles
+    "jobTitles": [""],  
     "limit": 50,
 }
 

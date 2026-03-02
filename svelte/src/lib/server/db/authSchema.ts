@@ -92,6 +92,25 @@ export const keywords = mysqlTable(
   (table) => [index("session_userId_idx").on(table.userId)],
 );
 
+export const prompts = mysqlTable(
+  "prompts",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    label: varchar("label", { length: 255 }).notNull(),
+    kind: varchar("kind", { length: 64 }).notNull(),
+    content: text("content").notNull(),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { fsp: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { fsp: 3 })
+      .defaultNow()
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [index("prompts_userId_idx").on(table.userId)],
+);
+
 export const savedJobs = mysqlTable(
   "savedJobs",
   {
@@ -155,6 +174,12 @@ export const accountRelations = relations(account, ({ one }) => ({
 export const keywordsRelations = relations(keywords, ({ one }) => ({
   user: one(user, {
     fields: [keywords.userId],
+    references: [user.id],
+  }),
+}));
+export const promptsRelations = relations(prompts, ({ one }) => ({
+  user: one(user, {
+    fields: [prompts.userId],
     references: [user.id],
   }),
 }));
