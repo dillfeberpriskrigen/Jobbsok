@@ -171,7 +171,10 @@
 
     <button type="button" class="close-btn" aria-label="Close modal" onclick={close}>×</button>
 
-    <h2>Select Locations</h2>
+    <div class="modal-intro">
+      <p class="eyebrow">Location Picker</p>
+      <h2>Select Locations</h2>
+    </div>
 
     <input type="text" placeholder="Search..." bind:value={search} />
 
@@ -207,7 +210,7 @@
 
     {/each}
 
-    <div class="footerbuttons" style="margin-top: 12px; display: flex; gap: 8px;">
+    <div class="footerbuttons">
       <button class="footsave" onclick={save}>Save</button>
       <button class="footclose" onclick={close}>Cancel</button>
     </div>
@@ -221,10 +224,12 @@
 .modal-bg {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.82);
   display: flex;
   justify-content: center;
   align-items: center;
+  padding: 1rem;
+  z-index: 40;
 }
 
 .modal {
@@ -232,10 +237,31 @@
   width: 90%;
   max-height: 80vh;
   overflow-y: auto;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: var(--radius-container);
+  padding: 1.25rem;
   position: relative;
-  background: rgb(1,0,0);
+  background: var(--color-surface-800);
+  border: 1px solid var(--color-surface-600);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  color: var(--base-font-color);
+}
+
+.modal-intro {
+  margin-bottom: 0.9rem;
+}
+
+.modal-intro h2,
+.modal-intro p {
+  margin: 0;
+}
+
+.eyebrow {
+  color: var(--color-warning-400);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 0.2rem;
 }
 
 .close-btn {
@@ -247,7 +273,7 @@
   font-size: 1.2em;
   border: 0;
   background: transparent;
-  color: white;
+  color: var(--color-primary-300);
 }
 
 .region-container {
@@ -263,50 +289,111 @@
 
 .municipality-chip,
 .region-chip {
-  padding: 4px 8px;
-  border-radius: 12px;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
   font-size: 0.9em;
   cursor: pointer;
   user-select: none;
-  transition: background 0.2s;
-  border: 0;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  border: 1px solid transparent;
+  font: inherit;
 }
 
 .municipality-chip {
-  background:#01071d;
-  color:white;
+  background: var(--color-surface-700);
+  color: var(--color-primary-300);
+  border-color: var(--color-surface-600);
 }
 
 .municipality-chip.selected {
-  background:#4f46e5;
+  background: var(--color-tertiary-500);
+  color: var(--color-tertiary-contrast-500);
+  border-color: transparent;
 }
 
 .region-chip {
-  background:#153f2a;
-  font-weight:bold;
-  color:white;
+  background: var(--color-surface-600);
+  font-weight: 700;
+  color: var(--base-font-color);
+  border-color: var(--color-surface-500);
 }
 
 .region-chip.selected {
-  background:#059669;
+  background: var(--color-secondary-500);
+  color: var(--color-secondary-contrast-500);
+  border-color: transparent;
 }
 
-.footerbuttons{position: fixed;
-  bottom:20%;
+.footerbuttons{
+  position: sticky;
+  bottom: -1.25rem;
+  margin-top: 1rem;
   display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  padding: 1rem 0 0.25rem;
+  background: linear-gradient(
+    180deg,
+    rgba(60, 56, 54, 0) 0%,
+    var(--color-surface-800) 35%
+  );
+  border-top: 1px solid var(--color-surface-600);
 }
 .footsave{
-  padding: 50px 100px;
-  background:#059669;
+  padding: 0.7rem 1.1rem;
+  background: var(--color-secondary-500);
+  color: var(--color-secondary-contrast-500);
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
 }
 .footclose{
-  padding: 50px 100px;
-  background:#cb230c;
+  padding: 0.7rem 1.1rem;
+  background: var(--color-surface-700);
+  color: var(--base-font-color);
+  border: 1px solid var(--color-surface-600);
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
 }
 input {
-  padding:6px 8px;
-  font-size:1em;
+  padding: 0.75rem 0.9rem;
+  font-size: 1em;
   width:100%;
-  margin-bottom:12px;
+  margin-bottom: 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--color-surface-600);
+  background: var(--color-surface-900);
+  color: var(--base-font-color);
+}
+
+input::placeholder {
+  color: var(--color-primary-500);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .municipality-chip,
+  .region-chip,
+  .footsave,
+  .footclose,
+  .close-btn {
+    transition: background 0.14s ease 100ms, color 0.14s ease 100ms, border-color 0.14s ease 100ms, filter 0.14s ease 100ms;
+  }
+
+  .region-chip:hover {
+    background: var(--color-surface-500);
+  }
+
+  .municipality-chip:hover {
+    background: var(--color-surface-600);
+  }
+
+  .footsave:hover,
+  .footclose:hover,
+  .close-btn:hover {
+    filter: brightness(1.06);
+  }
 }
 </style>

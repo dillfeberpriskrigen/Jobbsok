@@ -1,11 +1,23 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import JobSelectionModal from "$lib/components/JobSelectionModal.svelte";
   import LocationModal from "$lib/components/LocationSearchModal.svelte";
+  import type { Job } from "$lib/server/db/jobTypes";
   import type { LocationSelection, MunicipalityOption, RegionOption } from "$lib/types/location";
 
   type GroupedLocations = {
     region: LocationSelection;
     municipalities: LocationSelection[];
+  };
+  type Keyword = {
+    id: string;
+    keyword: string;
+    type?: string | null;
+    userId: string;
+  };
+  type SearchJob = Job & {
+    _selected?: boolean;
+    application_deadline_simple?: string;
   };
   const isDefined = <T>(value: T | null | undefined): value is T => value != null;
 
@@ -13,6 +25,7 @@
   let municipalities = $state<MunicipalityOption[]>([]);
 
   let showModal = $state(false);
+  let showJobModal = $state(false);
 
   let selectedLocations = $state<LocationSelection[]>([]);
   let activeRegions = $state(new Set<string>());
@@ -20,6 +33,16 @@
   let availableRegions = $state(new Set<string>());
   let availableMunicipalities = $state(new Set<string>());
   let locationError = $state("");
+  let jobTitlesList = $state<string[]>([]);
+  let selectedJobTitles = $state<string[]>([]);
+  let searchKeyword = $state("");
+  let filteredResults = $state<SearchJob[]>([]);
+  let reviewList = $state<SearchJob[]>([]);
+  let selectedJobDetail = $state<SearchJob | null>(null);
+  let showDetails = $state(false);
+  let keywordsError = $state("");
+  let searchError = $state("");
+  let reviewError = $state("");
 
   onMount(async () => {
     const [regionsResponse, municipalitiesResponse, savedLocationsResponse] = await Promise.all([
@@ -36,6 +59,9 @@
     } else if (savedLocationsResponse.status !== 401) {
       locationError = "Failed to load saved locations.";
     }
+
+    await loadKeywords();
+    await loadSavedJobs();
   });
 
   function applySelectedLocations(locations: LocationSelection[]) {
@@ -66,6 +92,181 @@
 
     applySelectedLocations(await response.json());
     showModal = false;
+  }
+
+  async function loadKeywords() {
+    keywordsError = "";
+
+    const response = await fetch("/api/user/keywords");
+    if (!response.ok) {
+      keywordsError = response.status === 401
+        ? "You must be signed in to load keywords."
+        : "Failed to load keywords.";
+      return;
+    }
+
+    const data = await response.json() as Keyword[];
+    const includeKeywords = data
+      .filter((keyword) => keyword.type === "include")
+      .map((keyword) => keyword.keyword.trim())
+      .filter(Boolean);
+
+    jobTitlesList = includeKeywords;
+    selectedJobTitles = selectedJobTitles.filter((title) => includeKeywords.includes(title));
+  }
+
+  async function addKeyword(keywordInput: string, type: "include" | "exclude") {
+    const keyword = keywordInput.trim();
+    if (!keyword) {
+      return null;
+    }
+
+    keywordsError = "";
+
+    const response = await fetch("/api/user/keywords", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ keyword, type })
+    });
+
+    if (!response.ok) {
+      keywordsError = response.status === 401
+        ? "You must be signed in to save keywords."
+        : "Failed to save keyword.";
+      return null;
+    }
+
+    const inserted = await response.json() as Keyword;
+    if (inserted.type === "include" && !jobTitlesList.includes(inserted.keyword)) {
+      jobTitlesList = [...jobTitlesList, inserted.keyword];
+    }
+
+    return inserted.type === "include" ? inserted.keyword : keyword;
+  }
+
+  function saveJobSelection(titles: string[]) {
+    selectedJobTitles = [...titles];
+    showJobModal = false;
+  }
+
+  function toggleReview(job: SearchJob) {
+    void saveOrRemoveReview(job);
+  }
+
+  function showJobDetail(job: SearchJob) {
+    selectedJobDetail = job;
+    showDetails = true;
+  }
+
+  function closeDetail() {
+    selectedJobDetail = null;
+    showDetails = false;
+  }
+
+  async function searchJobs() {
+    searchError = "";
+
+    const activeRegionNames = Array.from(activeRegions)
+      .map((regionId) => regions.find((region) => region.id === regionId)?.name)
+      .filter(isDefined);
+
+    const payload = {
+      regions: activeRegionNames,
+      jobTitles: selectedJobTitles,
+      keyword: searchKeyword
+    };
+
+    const response = await fetch("/api/jobs/search", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      searchError = "Failed to search jobs.";
+      return;
+    }
+
+    const data = await response.json() as SearchJob[];
+    filteredResults = data.map((job) => ({
+      ...job,
+      _selected: reviewList.some((saved) => saved.id === job.id),
+      application_deadline_simple: job.application_deadline_simple || ""
+    }));
+  }
+
+  async function loadSavedJobs() {
+    reviewError = "";
+
+    const savedResponse = await fetch("/api/user/savedJobs");
+    if (!savedResponse.ok) {
+      if (savedResponse.status !== 401) {
+        reviewError = "Failed to load saved jobs.";
+      }
+      return;
+    }
+
+    const savedRows = await savedResponse.json() as Array<{ jobId: string }>;
+    const jobIds = savedRows.map((row) => row.jobId).filter(Boolean);
+
+    if (jobIds.length === 0) {
+      reviewList = [];
+      return;
+    }
+
+    const jobsResponse = await fetch("/api/jobs/JobById", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ jobIds })
+    });
+
+    if (!jobsResponse.ok) {
+      reviewError = "Failed to load saved job details.";
+      return;
+    }
+
+    const jobs = await jobsResponse.json() as SearchJob[];
+    reviewList = jobs.map((job) => ({
+      ...job,
+      application_deadline_simple: job.application_deadline_simple || ""
+    }));
+  }
+
+  async function saveOrRemoveReview(job: SearchJob) {
+    reviewError = "";
+    const alreadySaved = reviewList.some((saved) => saved.id === job.id);
+
+    const response = await fetch("/api/user/savedJobs", {
+      method: alreadySaved ? "DELETE" : "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ jobId: job.id })
+    });
+
+    if (!response.ok) {
+      reviewError = response.status === 401
+        ? "You must be signed in to save jobs."
+        : "Failed to update saved jobs.";
+      return;
+    }
+
+    if (alreadySaved) {
+      reviewList = reviewList.filter((saved) => saved.id !== job.id);
+    } else {
+      reviewList = [...reviewList, job];
+    }
+
+    filteredResults = filteredResults.map((result) => ({
+      ...result,
+      _selected: reviewList.some((saved) => saved.id === result.id) || (!alreadySaved && result.id === job.id)
+    }));
   }
 
   function getAvailableMunicipalitiesForRegion(regionId: string) {
@@ -151,51 +352,222 @@
       })
       .filter(isDefined)
   );
+
+  const activeLocationLabels = $derived<LocationSelection[]>([
+    ...Array.from(activeRegions)
+      .map((id) => regions.find((region) => region.id === id))
+      .filter(isDefined)
+      .map((region) => ({ id: region.id, label: region.name, type: "region" as const })),
+    ...Array.from(activeMunicipalities)
+      .map((id) => municipalities.find((municipality) => municipality.id === id))
+      .filter(isDefined)
+      .map((municipality) => ({ id: municipality.id, label: municipality.name, type: "municipality" as const }))
+  ]);
 </script>
 
-<h2>Search & Select Locations</h2>
-
-<button onclick={() => showModal = true}>
-Open Location Modal
-</button>
-
-{#if locationError}
-  <p class="error-message">{locationError}</p>
-{/if}
-
-{#if groupedLocations.length > 0}
-  <div class="selected-locations">
-    {#each groupedLocations as group}
-      <section class="location-group">
-        <button
-          type="button"
-          class="location-chip region {isLocationActive(group.region) ? 'active' : ''}"
-          onclick={() => toggleActiveRegion(group.region.id)}
-          aria-pressed={isLocationActive(group.region)}
-        >
-          {group.region.label}
-        </button>
-
-        {#if group.municipalities.length > 0}
-          <div class="municipality-list">
-            {#each group.municipalities as municipality}
-              <button
-                type="button"
-                class="location-chip municipality {isLocationActive(municipality) ? 'active' : ''}"
-                onclick={() => toggleActiveMunicipality(municipality.id)}
-                aria-pressed={isLocationActive(municipality)}
-              >
-                {municipality.label}
-              </button>
-            {/each}
-          </div>
-        {/if}
-      </section>
-    {/each}
+<section class="debug-page">
+  <div class="page-intro">
+    <p class="eyebrow">Debug Workspace</p>
+    <h2>Search & Select Locations</h2>
+    <p class="page-copy">Test persisted selections, region toggles, and municipality coverage from one place.</p>
   </div>
-{:else}
-  <p>No locations selected yet.</p>
-{/if}
+
+  <button class="open-modal-button" onclick={() => showModal = true}>
+  Open Location Modal
+  </button>
+
+  {#if locationError}
+    <p class="error-message">{locationError}</p>
+  {/if}
+  {#if reviewError}
+    <p class="error-message">{reviewError}</p>
+  {/if}
+
+  {#if groupedLocations.length > 0}
+    <div class="selected-locations">
+      {#each groupedLocations as group}
+        <section class="location-group">
+          <button
+            type="button"
+            class="location-chip region {isLocationActive(group.region) ? 'active' : ''}"
+            onclick={() => toggleActiveRegion(group.region.id)}
+            aria-pressed={isLocationActive(group.region)}
+          >
+            {group.region.label}
+          </button>
+
+          {#if group.municipalities.length > 0}
+            <div class="municipality-list">
+              {#each group.municipalities as municipality}
+                <button
+                  type="button"
+                  class="location-chip municipality {isLocationActive(municipality) ? 'active' : ''}"
+                  onclick={() => toggleActiveMunicipality(municipality.id)}
+                  aria-pressed={isLocationActive(municipality)}
+                >
+                  {municipality.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </section>
+      {/each}
+    </div>
+  {:else}
+    <p class="empty-state">No locations selected yet.</p>
+  {/if}
+
+  <section class="tool-panel">
+    <div class="section-heading">
+      <h3>Job Titles</h3>
+      <p>Pick the title families you want included in search requests.</p>
+    </div>
+
+    <button type="button" class="action-button" onclick={() => showJobModal = true}>Open Job Selection</button>
+
+    {#if keywordsError}
+      <p class="error-message">{keywordsError}</p>
+    {/if}
+
+    {#if selectedJobTitles.length > 0}
+      <div class="keyword-list">
+        {#each selectedJobTitles as title}
+          <span class="keyword-chip active">
+            {title}
+          </span>
+        {/each}
+      </div>
+    {:else}
+      <p class="empty-state">No job titles selected yet.</p>
+    {/if}
+  </section>
+
+  <section class="tool-panel">
+    <div class="section-heading">
+      <h3>Search</h3>
+      <p>Search stored jobs using active regions and selected keyword chips.</p>
+    </div>
+
+    <div class="search-controls">
+      <input bind:value={searchKeyword} placeholder="Optional headline keyword" />
+      <button type="button" class="action-button tertiary" onclick={searchJobs}>Search Jobs</button>
+    </div>
+
+    {#if searchError}
+      <p class="error-message">{searchError}</p>
+    {/if}
+
+    {#if activeLocationLabels.length > 0}
+      <div class="active-location-list">
+        {#each activeLocationLabels as location}
+          <span class="active-location-chip">{location.label}</span>
+        {/each}
+      </div>
+    {/if}
+  </section>
+
+  <section class="tool-panel">
+    <div class="section-heading">
+      <h3>Search Results</h3>
+      <p>Review results and stage jobs for closer inspection.</p>
+    </div>
+
+    {#if filteredResults.length > 0}
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Review</th>
+              <th>Headline</th>
+              <th>Employer</th>
+              <th>Municipality</th>
+              <th>Deadline</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each filteredResults as job}
+              <tr>
+                <td>
+                  <button
+                    type="button"
+                    class="table-action {reviewList.some((saved) => saved.id === job.id) ? 'active' : ''}"
+                    onclick={() => toggleReview(job)}
+                  >
+                    {reviewList.some((saved) => saved.id === job.id) ? "Saved" : "Save"}
+                  </button>
+                </td>
+                <td><a href={job.webpage_url ?? "#"} target="_blank" rel="noreferrer">{job.headline}</a></td>
+                <td>{job.employer_name}</td>
+                <td>{job.municipality}</td>
+                <td>{job.application_deadline_simple ?? job.application_deadline ?? ""}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else}
+      <p class="empty-state">No search results yet.</p>
+    {/if}
+  </section>
+
+  <section class="tool-panel">
+    <div class="section-heading">
+      <h3>Review List</h3>
+      <p>Inspect the jobs you have staged from the search results.</p>
+    </div>
+
+    {#if reviewList.length > 0}
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Headline</th>
+              <th>Employer</th>
+              <th>Municipality</th>
+              <th>Deadline</th>
+              <th>View</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each reviewList as job}
+              <tr>
+                <td>{job.headline}</td>
+                <td>{job.employer_name}</td>
+                <td>{job.municipality}</td>
+                <td>{job.application_deadline_simple ?? job.application_deadline ?? ""}</td>
+                <td>
+                  <button type="button" class="table-action active" onclick={() => showJobDetail(job)}>View</button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else}
+      <p class="empty-state">No jobs staged for review.</p>
+    {/if}
+  </section>
+
+  {#if showDetails && selectedJobDetail}
+    <section class="tool-panel detail-panel">
+      <div class="detail-header">
+        <div>
+          <p class="eyebrow">Job Detail</p>
+          <h3>{selectedJobDetail.headline}</h3>
+        </div>
+        <button type="button" class="table-action active" onclick={closeDetail}>Close</button>
+      </div>
+
+      <p><strong>Employer:</strong> {selectedJobDetail.employer_name}</p>
+      <p><strong>Municipality:</strong> {selectedJobDetail.municipality}</p>
+      <p><strong>Deadline:</strong> {selectedJobDetail.application_deadline_simple ?? selectedJobDetail.application_deadline ?? ""}</p>
+      <p><strong>Link:</strong> <a href={selectedJobDetail.webpage_url ?? "#"} target="_blank" rel="noreferrer">Open listing</a></p>
+      <div class="job-description">
+        {selectedJobDetail.description}
+      </div>
+    </section>
+  {/if}
+</section>
 
 <LocationModal
   {regions}
@@ -206,23 +578,106 @@ Open Location Modal
   onClose={() => showModal = false}
 />
 
+<JobSelectionModal
+  open={showJobModal}
+  availableTitles={jobTitlesList}
+  selectedTitles={selectedJobTitles}
+  keywordError={keywordsError}
+  onSave={saveJobSelection}
+  onClose={() => showJobModal = false}
+  onAddKeyword={addKeyword}
+/>
+
 <style>
+  .debug-page {
+    display: grid;
+    gap: 1rem;
+    padding: 1.25rem;
+    border-radius: var(--radius-container);
+    background: var(--color-surface-800);
+    border: 1px solid var(--color-surface-600);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+  }
+
+  .page-intro {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .page-intro h2,
+  .page-intro p {
+    margin: 0;
+  }
+
+  .eyebrow {
+    color: var(--color-warning-400);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .page-copy {
+    color: var(--color-primary-300);
+    max-width: 42rem;
+  }
+
+  .open-modal-button {
+    width: fit-content;
+    border: 1px solid color-mix(in srgb, var(--color-secondary-300) 24%, transparent);
+    border-radius: 999px;
+    background: var(--color-secondary-500);
+    color: var(--color-secondary-contrast-500);
+    padding: 0.7rem 1.15rem;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.14s ease, filter 0.14s ease, border-color 0.14s ease;
+  }
+
   .selected-locations {
     display: grid;
     gap: 1rem;
-    margin-top: 1rem;
+  }
+
+  .tool-panel {
+    display: grid;
+    gap: 0.9rem;
+    padding: 1rem;
+    border-radius: calc(var(--radius-container) * 0.9);
+    background: var(--color-surface-700);
+    border: 1px solid var(--color-surface-600);
+  }
+
+  .section-heading {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  .section-heading h3,
+  .section-heading p {
+    margin: 0;
+  }
+
+  .section-heading p {
+    color: var(--color-primary-400);
   }
 
   .error-message {
-    color: #b91c1c;
-    margin-top: 0.75rem;
+    margin: 0;
+    color: var(--color-error-400);
+  }
+
+  .empty-state {
+    margin: 0;
+    color: var(--color-primary-400);
   }
 
   .location-group {
     padding: 1rem;
-    border-radius: 1rem;
-    background: #7b7b72;
-    border: 1px solid #020a15;
+    border-radius: calc(var(--radius-container) * 0.9);
+    background: var(--color-surface-700);
+    border: 1px solid var(--color-surface-600);
   }
 
   .municipality-list {
@@ -238,30 +693,176 @@ Open Location Modal
     padding: 0.5rem 0.9rem;
     cursor: pointer;
     font: inherit;
-    transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
-  }
-
-  .location-chip:hover {
-    transform: translateY(-1px);
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
   }
 
   .location-chip.region {
-    background: #d1fae5;
-    color: #065f46;
+    background: var(--color-surface-600);
+    color: var(--base-font-color);
+    border: 1px solid var(--color-surface-500);
   }
 
   .location-chip.region.active {
-    background: #059669;
-    color: #ffffff;
+    background: var(--color-secondary-500);
+    color: var(--color-secondary-contrast-500);
   }
 
   .location-chip.municipality {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--color-surface-700);
+    color: var(--color-primary-300);
+    border: 1px solid var(--color-surface-600);
   }
 
   .location-chip.municipality.active {
-    background: #2563eb;
-    color: #ffffff;
+    background: var(--color-tertiary-500);
+    color: var(--color-tertiary-contrast-500);
+  }
+
+  .search-controls {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .search-controls input {
+    min-width: 14rem;
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.85rem;
+    border: 1px solid var(--color-surface-600);
+    background: var(--color-surface-900);
+    color: var(--base-font-color);
+    font: inherit;
+  }
+
+  .keyword-list,
+  .active-location-list {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .action-button,
+  .keyword-chip,
+  .table-action,
+  .active-location-chip {
+    padding: 0.7rem 1rem;
+    border-radius: 999px;
+    font: inherit;
+  }
+
+  .action-button,
+  .table-action {
+    border: 1px solid var(--color-surface-500);
+    background: var(--color-secondary-500);
+    color: var(--color-secondary-contrast-500);
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .action-button.tertiary {
+    background: var(--color-tertiary-500);
+    color: var(--color-tertiary-contrast-500);
+  }
+
+  .keyword-chip {
+    border: 1px solid var(--color-surface-500);
+    background: var(--color-surface-600);
+    color: var(--base-font-color);
+    cursor: pointer;
+  }
+
+  .keyword-chip.active {
+    background: var(--color-warning-500);
+    color: var(--color-warning-contrast-500);
+    border-color: transparent;
+  }
+
+  .active-location-chip {
+    background: var(--color-surface-800);
+    color: var(--color-primary-300);
+    border: 1px solid var(--color-surface-600);
+  }
+
+  .table-shell {
+    overflow-x: auto;
+    border-radius: 1rem;
+    border: 1px solid var(--color-surface-600);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--color-surface-800);
+  }
+
+  th,
+  td {
+    padding: 0.85rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--color-surface-700);
+  }
+
+  th {
+    color: var(--color-primary-300);
+    font-size: 0.9rem;
+  }
+
+  td a {
+    color: var(--color-tertiary-300);
+  }
+
+  .table-action.active {
+    background: var(--color-secondary-500);
+  }
+
+  .detail-panel {
+    gap: 0.75rem;
+  }
+
+  .detail-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .detail-header h3,
+  .detail-header p {
+    margin: 0;
+  }
+
+  .job-description {
+    padding: 1rem;
+    border-radius: 1rem;
+    background: var(--color-surface-800);
+    border: 1px solid var(--color-surface-600);
+    white-space: pre-wrap;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .open-modal-button {
+      transition: background 0.14s ease 100ms, filter 0.14s ease 100ms, border-color 0.14s ease 100ms;
+    }
+
+    .open-modal-button:hover {
+      filter: brightness(1.05);
+    }
+
+    .location-chip {
+      transition: background 0.14s ease 100ms, color 0.14s ease 100ms, border-color 0.14s ease 100ms;
+    }
+
+    .location-chip.region:hover {
+      background: var(--color-surface-500);
+    }
+
+    .location-chip.municipality:hover {
+      background: var(--color-surface-600);
+    }
+
+    .action-button:hover,
+    .table-action:hover {
+      filter: brightness(1.05);
+    }
   }
 </style>

@@ -96,7 +96,7 @@ export const savedJobs = mysqlTable(
   "savedJobs",
   {
     id: varchar("id", { length: 36 }).primaryKey(),
-    jobId: text("keyword"),
+    jobId: varchar("job_id", { length: 64 }).notNull(),
     userId: varchar("user_id", { length: 36 })
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),

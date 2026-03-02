@@ -2,8 +2,9 @@
 import { authDb } from '$lib/server/db';
 import { savedJobs } from '$lib/server/db/authSchema';
 import { json, error } from '@sveltejs/kit';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
+import crypto from 'crypto';
 
 // ---------------------------
 // GET all saved jobs for user
@@ -42,7 +43,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   try {
     // Avoid duplicate saves
     const existing = await authDb.query.savedJobs.findFirst({
-      where: eq(savedJobs.jobId, jobId)
+      where: and(eq(savedJobs.jobId, jobId), eq(savedJobs.userId, locals.user.id))
     });
 
     if (existing) return json(existing, { status: 200 });
@@ -82,8 +83,7 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
 
   try {
     const result = await authDb.delete(savedJobs).where(
-      eq(savedJobs.jobId, jobId),
-      eq(savedJobs.userId, locals.user.id)
+      and(eq(savedJobs.jobId, jobId), eq(savedJobs.userId, locals.user.id))
     );
 
     if (result.rowsAffected === 0) {
