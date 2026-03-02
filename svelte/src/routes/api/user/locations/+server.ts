@@ -2,20 +2,9 @@ import { authDb } from '$lib/server/db';
 import { locations, municipalities, regions } from '$lib/server/db/authSchema';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
+import type { LocationSelection } from '$lib/types/location';
 import { eq, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
-
-type LocationInput = {
-  id: string;
-  type: 'region' | 'municipality';
-  label?: string;
-};
-
-type LocationResponse = {
-  id: string;
-  label: string;
-  type: 'region' | 'municipality';
-};
 
 type SavedLocationRow = {
   municipalityId: string;
@@ -42,7 +31,7 @@ function requireUserId(locals: App.Locals) {
   return userId;
 }
 
-async function buildLocationResponse(userId: string): Promise<LocationResponse[]> {
+async function buildLocationResponse(userId: string): Promise<LocationSelection[]> {
   const savedRows = await authDb.query.locations.findMany({
     where: eq(locations.userId, userId)
   }) as SavedLocationRow[];
@@ -88,7 +77,7 @@ async function buildLocationResponse(userId: string): Promise<LocationResponse[]
   ];
 }
 
-async function normalizeSelections(input: LocationInput[]) {
+async function normalizeSelections(input: LocationSelection[]) {
   const regionIds = [...new Set(input.filter((item) => item.type === 'region').map((item) => item.id))];
   const municipalityIds = [...new Set(input.filter((item) => item.type === 'municipality').map((item) => item.id))];
 
@@ -142,7 +131,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   }
 
   const normalizedInput = input.filter(
-    (item): item is LocationInput =>
+    (item): item is LocationSelection =>
       item &&
       typeof item === 'object' &&
       typeof item.id === 'string' &&

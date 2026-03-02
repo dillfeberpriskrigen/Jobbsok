@@ -1,22 +1,20 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import LocationModal from "$lib/components/LocationSearchModal.svelte";
+  import type { LocationSelection, MunicipalityOption, RegionOption } from "$lib/types/location";
 
-  type Region = { id: string; name: string };
-  type Municipality = { id: string; name: string; regionId: string };
-  type Location = { id: string; label: string; type: string };
   type GroupedLocations = {
-    region: Location;
-    municipalities: Location[];
+    region: LocationSelection;
+    municipalities: LocationSelection[];
   };
   const isDefined = <T>(value: T | null | undefined): value is T => value != null;
 
-  let regions = $state<Region[]>([]);
-  let municipalities = $state<Municipality[]>([]);
+  let regions = $state<RegionOption[]>([]);
+  let municipalities = $state<MunicipalityOption[]>([]);
 
   let showModal = $state(false);
 
-  let selectedLocations = $state<Location[]>([]);
+  let selectedLocations = $state<LocationSelection[]>([]);
   let activeRegions = $state(new Set<string>());
   let activeMunicipalities = $state(new Set<string>());
   let availableRegions = $state(new Set<string>());
@@ -40,7 +38,7 @@
     }
   });
 
-  function applySelectedLocations(locations: Location[]) {
+  function applySelectedLocations(locations: LocationSelection[]) {
     selectedLocations = [...locations];
     availableRegions = new Set(selectedLocations.filter((location) => location.type === "region").map((location) => location.id));
     availableMunicipalities = new Set(selectedLocations.filter((location) => location.type === "municipality").map((location) => location.id));
@@ -48,7 +46,7 @@
     activeMunicipalities = new Set([...activeMunicipalities].filter((id) => availableMunicipalities.has(id)));
   }
 
-  async function saveModal(locations: Location[]) {
+  async function saveModal(locations: LocationSelection[]) {
     locationError = "";
 
     const response = await fetch("/api/user/locations", {
@@ -127,7 +125,7 @@
     activeMunicipalities = nextActiveMunicipalities;
   }
 
-  function isLocationActive(location: Location) {
+  function isLocationActive(location: LocationSelection) {
     return location.type === "region"
       ? activeRegions.has(location.id)
       : activeMunicipalities.has(location.id);

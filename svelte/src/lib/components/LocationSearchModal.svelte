@@ -1,15 +1,14 @@
 <script lang="ts">
-  type Region = { id: string; name: string };
-  type Municipality = { id: string; name: string; regionId: string };
-  type Location = { id: string; label: string; type: string };
-  type FilteredRegion = Region & { municipalities: Municipality[] };
+  import type { LocationSelection, MunicipalityOption, RegionOption } from "$lib/types/location";
+
+  type FilteredRegion = RegionOption & { municipalities: MunicipalityOption[] };
 
   interface Props {
-    regions?: Region[];
-    municipalities?: Municipality[];
-    selectedLocations?: Location[];
+    regions?: RegionOption[];
+    municipalities?: MunicipalityOption[];
+    selectedLocations?: LocationSelection[];
     open?: boolean;
-    onSave?: (locations: Location[]) => void;
+    onSave?: (locations: LocationSelection[]) => void;
     onClose?: () => void;
   }
 
@@ -23,7 +22,7 @@
   }: Props = $props();
 
   let search = $state("");
-  let tempSelection: Location[] = $state([]);
+  let tempSelection: LocationSelection[] = $state([]);
 
   $effect(() => {
     if (open) {
@@ -68,7 +67,7 @@
     return selected;
   }
 
-  function toggleRegion(region: Region) {
+  function toggleRegion(region: RegionOption) {
     console.log("[DEBUG] toggleRegion called for:", region);
     const munis = getMunicipalities(region.id);
 
@@ -88,7 +87,7 @@
     console.log("[DEBUG] tempSelection after toggleRegion:", tempSelection);
   }
 
-  function toggleMunicipality(muni: Municipality) {
+  function toggleMunicipality(muni: MunicipalityOption) {
     console.log("[DEBUG] toggleMunicipality called for:", muni);
 
     if (isMunicipalitySelected(muni.id)) {
