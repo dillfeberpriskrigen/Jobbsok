@@ -1,38 +1,53 @@
 <script lang="ts">
-  import { run, createBubbler, stopPropagation } from 'svelte/legacy';
-
-  const bubble = createBubbler();
-  import { createEventDispatcher } from "svelte";
-
   type Region = { id: string; name: string };
   type Municipality = { id: string; name: string; regionId: string };
   type Location = { id: string; label: string; type: string };
+  type FilteredRegion = Region & { municipalities: Municipality[] };
 
   interface Props {
     regions?: Region[];
     municipalities?: Municipality[];
     selectedLocations?: Location[];
     open?: boolean;
+    onSave?: (locations: Location[]) => void;
+    onClose?: () => void;
   }
 
   let {
     regions = [],
     municipalities = [],
     selectedLocations = [],
-    open = false
+    open = false,
+    onSave = () => {},
+    onClose = () => {}
   }: Props = $props();
-
-  const dispatch = createEventDispatcher();
 
   let search = $state("");
   let tempSelection: Location[] = $state([]);
 
-  // Reactive assignment for tempSelection when modal opens
-  run(() => {
+  $effect(() => {
     if (open) {
       console.log("[DEBUG] Modal opened, copying selectedLocations to tempSelection:", selectedLocations);
       tempSelection = [...selectedLocations];
     }
+  });
+
+  $effect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeydown);
+    };
   });
 
   function getMunicipalities(regionId: string) {
@@ -114,42 +129,48 @@
 
   function save() {
     console.log("[DEBUG] Saving selection:", tempSelection);
-    dispatch("save", tempSelection);
+    onSave(tempSelection);
   }
 
   function close() {
     console.log("[DEBUG] Closing modal");
-    dispatch("close");
+    onClose();
   }
 
-  let filteredRegions = $derived(regions
-    .map(r => {
-      const regionMatch = r.name.toLowerCase().includes(search.toLowerCase());
-      const muniMatch = getMunicipalities(r.id).filter(m =>
-        m.name.toLowerCase().includes(search.toLowerCase())
+  let filteredRegions = $derived.by<FilteredRegion[]>(() =>
+    regions.flatMap((region) => {
+      const regionMatch = region.name.toLowerCase().includes(search.toLowerCase());
+      const muniMatch = getMunicipalities(region.id).filter((municipality) =>
+        municipality.name.toLowerCase().includes(search.toLowerCase())
       );
 
-      console.log(`[DEBUG] Filtering region: ${r.name}, regionMatch: ${regionMatch}, muniMatch:`, muniMatch);
+      console.log(`[DEBUG] Filtering region: ${region.name}, regionMatch: ${regionMatch}, muniMatch:`, muniMatch);
 
-      if (regionMatch || muniMatch.length > 0) {
-        return {
-          ...r,
-          municipalities:
-            muniMatch.length > 0 && !regionMatch ? muniMatch : getMunicipalities(r.id)
-        };
+      if (!regionMatch && muniMatch.length === 0) {
+        return [];
       }
 
-      return null;
+      return [{
+        ...region,
+        municipalities: muniMatch.length > 0 && !regionMatch ? muniMatch : getMunicipalities(region.id)
+      }];
     })
-    .filter(Boolean));
+  );
 
 </script>
 
 {#if open}
-<div class="modal-bg" onclick={close}>
-  <div class="modal" onclick={stopPropagation(bubble('click'))}>
+<div
+  class="modal-bg"
+  role="button"
+  tabindex="0"
+  aria-label="Close location selection modal"
+  onclick={(event) => event.target === event.currentTarget && close()}
+  onkeydown={(event) => (event.key === "Enter" || event.key === " ") && close()}
+>
+  <div class="modal">
 
-    <div class="close-btn" onclick={close}>×</div>
+    <button type="button" class="close-btn" aria-label="Close modal" onclick={close}>×</button>
 
     <h2>Select Locations</h2>
 
@@ -159,23 +180,25 @@
 
       <div class="region-container">
 
-        <div
+        <button
+          type="button"
           class="region-chip {isRegionSelected(region.id) ? 'selected' : ''}"
           onclick={() => toggleRegion(region)}
         >
           {region.name}
-        </div>
+        </button>
 
         <div class="municipalities">
 
           {#each region.municipalities as muni}
 
-            <div
+            <button
+              type="button"
               class="municipality-chip {isMunicipalitySelected(muni.id) ? 'selected' : ''}"
               onclick={() => toggleMunicipality(muni)}
             >
               {muni.name}
-            </div>
+            </button>
 
           {/each}
 
@@ -223,6 +246,9 @@
   cursor: pointer;
   font-weight: bold;
   font-size: 1.2em;
+  border: 0;
+  background: transparent;
+  color: white;
 }
 
 .region-container {
@@ -244,6 +270,7 @@
   cursor: pointer;
   user-select: none;
   transition: background 0.2s;
+  border: 0;
 }
 
 .municipality-chip {

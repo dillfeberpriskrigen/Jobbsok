@@ -55,8 +55,8 @@ let availableMunicipalities = $state(new Set<string>());
 
 
   
-  function saveModal(event) {
-    selectedLocations = [...event.detail];
+  function saveModal(locations: Location[]) {
+    selectedLocations = [...locations];
   $: console.log("[DEBUG] selectedLocations:", selectedLocations);
     availableRegions = new Set(selectedLocations.filter(l => l.type === "region").map(l => l.id));
     availableMunicipalities = new Set(selectedLocations.filter(l => l.type === "municipality").map(l => l.id));
@@ -559,6 +559,6 @@ Sök Britt-marie för fa-an!
   {municipalities}
   {selectedLocations}
   open={showLocationModal}
-  on:save={saveModal}
-  on:close={() => showLocationModal = false}
+  onSave={saveModal}
+  onClose={() => showLocationModal = false}
 />

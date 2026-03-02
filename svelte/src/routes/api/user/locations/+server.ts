@@ -1,100 +1,181 @@
-// src/routes/api/user/locations.ts
 import { authDb } from '$lib/server/db';
-import { json, error } from '@sveltejs/kit';
+import { municipalities, regions, locations } from '$lib/server/db/authSchema';
+import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import { locations } from '$lib/server/db/authSchema';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 
-/**
- * GET /api/user/locations
- * Returns all saved locations for the logged-in user
- */
-export const GET: RequestHandler = async ({ locals }) => {
-  console.log('[DEBUG][GET] /api/user/locations called');
+type LocationInput = {
+  id: string;
+  type: 'region' | 'municipality';
+  label?: string;
+};
 
-  if (!locals.user) throw error(401, 'Unauthorized');
+type LocationResponse = {
+  id: string;
+  label: string;
+  type: 'region' | 'municipality';
+};
+
+type SavedLocationRow = {
+  municipalityId: string;
+};
+
+type SelectedMunicipality = {
+  id: string;
+  name: string;
+  regionId: string;
+};
+
+type SelectedRegion = {
+  id: string;
+  name: string;
+};
+
+async function buildLocationResponse(userId: string): Promise<LocationResponse[]> {
+  const savedRows = await authDb.query.locations.findMany({
+    where: eq(locations.userId, userId)
+  }) as SavedLocationRow[];
+
+  const municipalityIds = [...new Set(savedRows.map((row: SavedLocationRow) => row.municipalityId))];
+
+  if (municipalityIds.length === 0) {
+    return [];
+  }
+
+  const selectedMunicipalities = await authDb
+    .select({
+      id: municipalities.id,
+      name: municipalities.name,
+      regionId: municipalities.regionId
+    })
+    .from(municipalities)
+    .where(inArray(municipalities.id, municipalityIds)) as SelectedMunicipality[];
+
+  const regionIds = [...new Set(selectedMunicipalities.map((municipality: SelectedMunicipality) => municipality.regionId))];
+
+  const selectedRegions = regionIds.length === 0
+    ? []
+    : await authDb
+        .select({
+          id: regions.id,
+          name: regions.name
+        })
+        .from(regions)
+        .where(inArray(regions.id, regionIds)) as SelectedRegion[];
+
+  return [
+    ...selectedRegions.map((region: SelectedRegion) => ({
+      id: region.id,
+      label: region.name,
+      type: 'region' as const
+    })),
+    ...selectedMunicipalities.map((municipality: SelectedMunicipality) => ({
+      id: municipality.id,
+      label: municipality.name,
+      type: 'municipality' as const
+    }))
+  ];
+}
+
+async function normalizeSelections(input: LocationInput[]) {
+  const regionIds = [...new Set(input.filter((item) => item.type === 'region').map((item) => item.id))];
+  const municipalityIds = [...new Set(input.filter((item) => item.type === 'municipality').map((item) => item.id))];
+
+  const municipalitiesFromRegions = regionIds.length === 0
+    ? []
+    : await authDb
+        .select({
+          id: municipalities.id,
+          regionId: municipalities.regionId
+        })
+        .from(municipalities)
+        .where(inArray(municipalities.regionId, regionIds));
+
+  const municipalitiesFromSelections = municipalityIds.length === 0
+    ? []
+    : await authDb
+        .select({
+          id: municipalities.id,
+          regionId: municipalities.regionId
+        })
+        .from(municipalities)
+        .where(inArray(municipalities.id, municipalityIds));
+
+  const normalizedMunicipalities = new Map<string, { id: string; regionId: string }>();
+
+  for (const municipality of [...municipalitiesFromRegions, ...municipalitiesFromSelections]) {
+    normalizedMunicipalities.set(municipality.id, municipality);
+  }
+
+  return [...normalizedMunicipalities.values()];
+}
+
+function requireUserId(locals: App.Locals) {
+  const userId = locals.user?.id;
+
+  if (!userId) {
+    throw error(401, 'Unauthorized');
+  }
+
+  return userId;
+}
+
+export const GET: RequestHandler = async ({ locals }) => {
+  const userId = requireUserId(locals);
 
   try {
-    const result = await authDb.query.locations.findMany({
-      where: eq(locations.userId, locals.user.id),
-    });
-
-    console.log('[DEBUG][GET] Fetched locations:', result);
-    return json(result);
+    return json(await buildLocationResponse(userId));
   } catch (err) {
-    console.error('[DEBUG][GET] Error fetching locations:', err);
+    console.error('[GET] Failed to fetch locations:', err);
     throw error(500, 'Failed to fetch locations');
   }
 };
 
-/**
- * POST /api/user/locations
- * Adds a new location for the logged-in user
- * Acceptable inputs: regionId and/or municipalityId
- */
-export const POST: RequestHandler = async ({ locals, request }) => {
-  console.log('[DEBUG][POST] /api/user/locations called');
-
-  if (!locals.user) throw error(401, 'Unauthorized');
-
+export const PUT: RequestHandler = async ({ locals, request }) => {
+  const userId = requireUserId(locals);
   const body = await request.json();
-  const { regionId, municipalityId } = body;
-  console.log('[DEBUG][POST] Request body:', body);
+  const input = body?.locations;
 
-  if (!regionId && !municipalityId) {
-    throw error(400, 'Either regionId or municipalityId is required');
+  if (!Array.isArray(input)) {
+    throw error(400, 'locations must be an array');
+  }
+
+  const normalizedInput = input.filter(
+    (item): item is LocationInput =>
+      item &&
+      typeof item === 'object' &&
+      typeof item.id === 'string' &&
+      (item.type === 'region' || item.type === 'municipality')
+  );
+
+  if (normalizedInput.length !== input.length) {
+    throw error(400, 'Invalid location payload');
   }
 
   try {
-    const newId = crypto.randomUUID();
+    const normalizedMunicipalities = await normalizeSelections(normalizedInput);
 
-    await authDb.insert(locations).values({
-      id: newId,
-      regionId: regionId ?? '',
-      municipalityId: municipalityId ?? '',
-      userId: locals.user.id,
+    await authDb.transaction(async (tx: typeof authDb) => {
+      await tx.delete(locations).where(eq(locations.userId, userId));
+
+      if (normalizedMunicipalities.length === 0) {
+        return;
+      }
+
+      await tx.insert(locations).values(
+        normalizedMunicipalities.map((municipality) => ({
+          id: crypto.randomUUID(),
+          regionId: municipality.regionId,
+          municipalityId: municipality.id,
+          userId
+        }))
+      );
     });
 
-    // Fetch the inserted row
-    const inserted = await authDb.query.locations.findFirst({
-      where: eq(locations.id, newId),
-    });
-
-    console.log('[DEBUG][POST] Inserted location:', inserted);
-    return json(inserted, { status: 201 });
+    return json(await buildLocationResponse(userId));
   } catch (err) {
-    console.error('[DEBUG][POST] Error creating location:', err);
-    throw error(500, 'Failed to create location');
-  }
-};
-
-/**
- * DELETE /api/user/locations
- * Deletes a location by ID for the logged-in user
- */
-export const DELETE: RequestHandler = async ({ locals, request }) => {
-  console.log('[DEBUG][DELETE] /api/user/locations called');
-
-  if (!locals.user) throw error(401, 'Unauthorized');
-
-  const body = await request.json();
-  const { locationId } = body;
-  console.log('[DEBUG][DELETE] Request body:', body);
-
-  if (!locationId) throw error(400, 'locationId is required');
-
-  try {
-    const result = await authDb.delete(locations)
-      .where(eq(locations.id, locationId), eq(locations.userId, locals.user.id));
-
-    if (result.rowsAffected === 0) throw error(404, 'Location not found or unauthorized');
-
-    console.log('[DEBUG][DELETE] Successfully deleted location:', locationId);
-    return json({ success: true });
-  } catch (err) {
-    console.error('[DEBUG][DELETE] Error deleting location:', err);
-    if (err.status) throw err;
-    throw error(500, 'Failed to delete location');
+    console.error('[PUT] Failed to save locations:', err);
+    throw error(500, 'Failed to save locations');
   }
 };
