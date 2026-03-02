@@ -1,5 +1,5 @@
 import { authDb } from '$lib/server/db';
-import { municipalities, regions, locations } from '$lib/server/db/authSchema';
+import { locations, municipalities, regions } from '$lib/server/db/authSchema';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { eq, inArray } from 'drizzle-orm';
@@ -32,12 +32,22 @@ type SelectedRegion = {
   name: string;
 };
 
+function requireUserId(locals: App.Locals) {
+  const userId = locals.user?.id;
+
+  if (!userId) {
+    throw error(401, 'Unauthorized');
+  }
+
+  return userId;
+}
+
 async function buildLocationResponse(userId: string): Promise<LocationResponse[]> {
   const savedRows = await authDb.query.locations.findMany({
     where: eq(locations.userId, userId)
   }) as SavedLocationRow[];
 
-  const municipalityIds = [...new Set(savedRows.map((row: SavedLocationRow) => row.municipalityId))];
+  const municipalityIds = [...new Set(savedRows.map((row) => row.municipalityId))];
 
   if (municipalityIds.length === 0) {
     return [];
@@ -52,7 +62,7 @@ async function buildLocationResponse(userId: string): Promise<LocationResponse[]
     .from(municipalities)
     .where(inArray(municipalities.id, municipalityIds)) as SelectedMunicipality[];
 
-  const regionIds = [...new Set(selectedMunicipalities.map((municipality: SelectedMunicipality) => municipality.regionId))];
+  const regionIds = [...new Set(selectedMunicipalities.map((municipality) => municipality.regionId))];
 
   const selectedRegions = regionIds.length === 0
     ? []
@@ -65,12 +75,12 @@ async function buildLocationResponse(userId: string): Promise<LocationResponse[]
         .where(inArray(regions.id, regionIds)) as SelectedRegion[];
 
   return [
-    ...selectedRegions.map((region: SelectedRegion) => ({
+    ...selectedRegions.map((region) => ({
       id: region.id,
       label: region.name,
       type: 'region' as const
     })),
-    ...selectedMunicipalities.map((municipality: SelectedMunicipality) => ({
+    ...selectedMunicipalities.map((municipality) => ({
       id: municipality.id,
       label: municipality.name,
       type: 'municipality' as const
@@ -109,16 +119,6 @@ async function normalizeSelections(input: LocationInput[]) {
   }
 
   return [...normalizedMunicipalities.values()];
-}
-
-function requireUserId(locals: App.Locals) {
-  const userId = locals.user?.id;
-
-  if (!userId) {
-    throw error(401, 'Unauthorized');
-  }
-
-  return userId;
 }
 
 export const GET: RequestHandler = async ({ locals }) => {
