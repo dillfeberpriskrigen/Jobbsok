@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import PromptManagerModal from '$lib/components/PromptManagerModal.svelte';
-	import type { ActionData, PageData } from './$types';
+	import type { ActionData, PageData } from './$types.js';
 
 	let { form, data }: { form: ActionData; data: PageData } = $props();
 	let showPromptManager = $state(false);
@@ -27,9 +27,13 @@
 		| 'languages'
 		| 'workStyles';
 
+	const initialNameParts = data.user?.name?.split(' ') ?? [];
+	const initialFirstName = initialNameParts[0] ?? '';
+	const initialLastName = initialNameParts.slice(1).join(' ');
+
 	let profileDraft = $state<ProfileDraft>({
-		firstName: data.user?.name?.split(' ')[0] ?? '',
-		lastName: data.user?.name?.split(' ').slice(1).join(' ') ?? '',
+		firstName: initialFirstName,
+		lastName: initialLastName,
 		title: '',
 		summary: '',
 		practicalSkills: [],
@@ -158,7 +162,7 @@
 				</div>
 
 				<div class="account-actions">
-					<a class="primary-link" href="/debug">Go to Debug Workspace</a>
+					<a class="primary-link" href="/">Go to Search Workspace</a>
 					<button type="button" class="secondary-button" onclick={() => showPromptManager = true}>
 						Manage Prompts
 					</button>

@@ -4,3 +4,8 @@ old
 *.txt
 ODStest.py
 Main.ods
+/db/*
+/db/
+/svelte/doomdrawer/
+/svelte/doomdrawer/*
+/svelte/.env

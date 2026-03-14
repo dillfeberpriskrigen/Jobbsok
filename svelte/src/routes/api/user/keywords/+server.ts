@@ -1,8 +1,8 @@
-import { authDb } from '$lib/server/db';
+import { authDb } from '$lib/server/db.js';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import { keywords } from '$lib/server/db/authSchema';
-import { eq } from 'drizzle-orm';
+import { keywords } from '$lib/server/db/authSchema.js';
+import { and, eq } from 'drizzle-orm';
 
 // ---------------------------
 // GET all keywords for the logged-in user
@@ -90,19 +90,19 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
   if (!keywordId || typeof keywordId !== 'string') throw error(400, 'keywordId is required');
 
   try {
-    // Delete only if it belongs to the logged-in user
-    const result = await authDb.delete(keywords)
-      .where(eq(keywords.id, keywordId), eq(keywords.userId, locals.user.id));
+    const existing = await authDb.query.keywords.findFirst({
+      where: and(eq(keywords.id, keywordId), eq(keywords.userId, locals.user.id))
+    });
 
-    console.log('[DEBUG][DELETE] Rows affected:', result.rowsAffected);
+    if (!existing) throw error(404, 'Keyword not found or unauthorized');
 
-    if (result.rowsAffected === 0) throw error(404, 'Keyword not found or unauthorized');
+    await authDb.delete(keywords).where(eq(keywords.id, keywordId));
 
     console.log('[DEBUG][DELETE] Successfully deleted keyword:', keywordId);
     return json({ success: true });
   } catch (err) {
     console.error('[DEBUG][DELETE] Error deleting keyword:', err);
-    if (err.status) throw err;
+    if (err && typeof err === 'object' && 'status' in err) throw err;
     throw error(500, 'Failed to delete keyword');
   }
 };

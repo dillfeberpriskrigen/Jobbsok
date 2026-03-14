@@ -1,554 +1,732 @@
-<script lang=ts>
-import JobDetailModal from "$lib/components/JobDetailModal.svelte";
-import LocationModal from "$lib/components/LocationSearchModal.svelte";
-import { onMount } from "svelte";
-import type { jobs } from "$lib/server/db/jobSchema"
-import type { UserPrompt } from "$lib/types/prompt";
-// Deklarationer
-type keyword = {
-  id: string;
-  keyword: string;
-  type?: string;
-  userId: string;
-};
-  let { data } = $props();
+<script lang="ts">
+  import { onMount } from "svelte";
+  import JobDetailModal from "$lib/components/JobDetailModal.svelte";
+  import JobSelectionModal from "$lib/components/JobSelectionModal.svelte";
+  import LocationModal from "$lib/components/LocationSearchModal.svelte";
+  import type { Job } from "$lib/server/db/jobTypes.js";
+  import type { LocationSelection, MunicipalityOption, RegionOption } from "$lib/types/location.js";
+  import type { UserPrompt } from "$lib/types/prompt.js";
 
-  type Region = { id: string; name: string };
-  type Municipality = { id: string; name: string; regionId: string };
-  type Location = { id: string; label: string; type: string };
-let regions = $state<Region[]>([]);
-let municipalities = $state<Municipality[]>([]);
-let selectedLocations: Location[] = $state([]);
+  type GroupedLocations = {
+    region: LocationSelection;
+    municipalities: LocationSelection[];
+  };
+  type Keyword = {
+    id: string;
+    keyword: string;
+    type?: string | null;
+    userId: string;
+  };
+  type SearchJob = Job & {
+    _selected?: boolean;
+    application_deadline_simple?: string;
+  };
+  const isDefined = <T>(value: T | null | undefined): value is T => value != null;
+  const byLabel = (left: string, right: string) => left.localeCompare(right);
+  const subscriptionLocationStorageKey = 'jobbsok:selected-subscription-locations';
+  const subscriptionTitleStorageKey = 'jobbsok:selected-subscription-titles';
 
-  let showLocationModal = $state(false);
+  let regions = $state<RegionOption[]>([]);
+  let municipalities = $state<MunicipalityOption[]>([]);
 
- let activeRegions = $state(new Set<string>());
-let activeMunicipalities = $state(new Set<string>());
-let availableRegions = $state(new Set<string>());
-let availableMunicipalities = $state(new Set<string>());
-	let jobTitlesList = $state([]);
-  let newKeyword = $state('');
-  let newType = $state('include');
+  let showModal = $state(false);
+  let showJobModal = $state(false);
 
-	// -----------------------------
-	// State
-	// -----------------------------
-	let selectedRegions = $state<Region[]>([]); //Den här borde nu vara den lista som kommer från modalen eller.. läsas från local?
-	let selectedJobTitles = $state<string[]>([]); //Tror det här borde vara type job.id? 
-
-	let filteredResults = $state<jobs[]>([]);
-  let reviewList = $state<jobs[]>([]);
-
-	let searchKeyword = $state("");
-
-
-	let selectedJobDetail = $state(null);
-	let savedPrompts = $state<UserPrompt[]>([]);
-
+  let selectedLocations = $state<LocationSelection[]>([]);
+  let activeRegions = $state(new Set<string>());
+  let activeMunicipalities = $state(new Set<string>());
+  let availableRegions = $state(new Set<string>());
+  let availableMunicipalities = $state(new Set<string>());
+  let locationError = $state("");
+  let jobTitleOptions = $state<string[]>([]);
+  let selectedJobTitles = $state<string[]>([]);
+  let searchKeyword = $state("");
+  let filteredResults = $state<SearchJob[]>([]);
+  let reviewList = $state<SearchJob[]>([]);
+  let selectedJobDetail = $state<SearchJob | null>(null);
+  let savedPrompts = $state<UserPrompt[]>([]);
   let showDetails = $state(false);
+  let keywordsError = $state("");
+  let searchError = $state("");
+  let reviewError = $state("");
+  let savedIncludeKeywords = $state<Keyword[]>([]);
+  let isSearching = $state(false);
+  let lastSearchTitles = $state<string[]>([]);
+  let lastSearchPlaces = $state<string[]>([]);
 
-  let selectedKeywords = $state<keyword[]>([]);   // which keywords are active for filtering
+  onMount(async () => {
+    const [regionsResponse, municipalitiesResponse, savedLocationsResponse] = await Promise.all([
+      fetch("/api/data/regions"),
+      fetch("/api/data/municipalities"),
+      fetch("/api/user/locations")
+    ]);
 
-  let regionsList = $state([]);
-  let municipalitiesList = $state([]); // ska användas
+    regions = await regionsResponse.json();
+    municipalities = await municipalitiesResponse.json();
 
-
-  
-  function saveModal(locations: Location[]) {
-    selectedLocations = [...locations];
-  $: console.log("[DEBUG] selectedLocations:", selectedLocations);
-    availableRegions = new Set(selectedLocations.filter(l => l.type === "region").map(l => l.id));
-    availableMunicipalities = new Set(selectedLocations.filter(l => l.type === "municipality").map(l => l.id));
-
-    activeRegions = new Set([...activeRegions].filter(id => availableRegions.has(id)));
-    activeMunicipalities = new Set([...activeMunicipalities].filter(id => availableMunicipalities.has(id)));
-
-    showLocationModal = false;
-  }
-
-  function toggleActiveRegion(regionId: string) {
-    if (activeRegions.has(regionId)) {
-      activeRegions.delete(regionId);
-    } else {
-      activeRegions.add(regionId);
+    if (savedLocationsResponse.ok) {
+      applySelectedLocations(await savedLocationsResponse.json());
+    } else if (savedLocationsResponse.status !== 401) {
+      locationError = "Failed to load saved locations.";
     }
-    activeRegions = new Set(activeRegions);
+
+    await Promise.all([
+      loadKeywords(),
+      loadPrompts(),
+      loadSavedJobs()
+    ]);
+  });
+
+  $effect(() => {
+    if (showJobModal && jobTitleOptions.length === 0) {
+      void loadJobTitleOptions();
+    }
+  });
+
+  function applySelectedLocations(locations: LocationSelection[]) {
+    selectedLocations = [...locations];
+    availableRegions = new Set(selectedLocations.filter((location) => location.type === "region").map((location) => location.id));
+    availableMunicipalities = new Set(selectedLocations.filter((location) => location.type === "municipality").map((location) => location.id));
+    activeRegions = new Set(availableRegions);
+    activeMunicipalities = new Set(availableMunicipalities);
   }
 
-  function toggleActiveMunicipality(id: string) {
-    if (activeMunicipalities.has(id)) activeMunicipalities.delete(id);
-    else activeMunicipalities.add(id);
-    activeMunicipalities = new Set(activeMunicipalities);
-  }
+  async function saveModal(locations: LocationSelection[]) {
+    locationError = "";
 
-const displayedLocations = $derived<Location[]>([
-  ...Array.from(availableRegions)
-    .map(id => regions.find(r => r.id === id))
-    .filter((r): r is Region => Boolean(r))
-    .map(r => ({ id: r.id, label: r.name, type: "region" })),
-
-  ...Array.from(availableMunicipalities)
-    .map(id => municipalities.find(m => m.id === id))
-    .filter((m): m is Municipality => Boolean(m))
-    .map(m => ({ id: m.id, label: m.name, type: "municipality" }))
-]);
-const activeDisplayedLocations = $derived<Location[]>(() => [
-  ...Array.from(activeRegions)
-    .map(id => regions.find(r => r.id === id))
-    .filter((r): r is Region => Boolean(r))
-    .map(r => ({ id: r.id, label: r.name, type: "region" })),
-
-  ...Array.from(activeMunicipalities)
-    .map(id => municipalities.find(m => m.id === id))
-    .filter((m): m is Municipality => Boolean(m))
-    .map(m => ({ id: m.id, label: m.name, type: "municipality" }))
-]);
-  async function performSearch() {
-    const payload = {
-      regions: [...selectedRegions, ...selectedMunicipalities], //Todo: Kolla hur modalen returnerar valda kommuner
-      jobTitles: [],
-      keyword: searchKeyword
-    };
-
-  console.log("[DEBUG] Performing search with payload:", payload);
-
-  try {
-    const res = await fetch("/api/jobs/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    const response = await fetch("/api/user/locations", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ locations })
     });
 
-    if (!res.ok) throw new Error("Search request failed");
+    if (!response.ok) {
+      locationError = response.status === 401
+        ? "You must be signed in to save locations."
+        : "Failed to save locations.";
+      return;
+    }
 
-    const data = await res.json();
-    filteredResults = data.map(job => ({
-      ...job,
-      _selected: false,
-      application_deadline_simple: job.application_deadline_simple || "",
-    }));
-    console.log("[DEBUG] Search results:", filteredResults);
-  } catch (err) {
-    console.error("[ERROR] Search failed:", err);
+    applySelectedLocations(await response.json());
+    showModal = false;
   }
-}
-//async function loadLocations() { // används det här till någonting längre? Nej men det ska användas! Ta inte bort vi sparar inte locations än
-//  try {
-//    const resRegions = await fetch("/api/data/regions");
-//    const regionsData = await resRegions.json();
-//    regionsList = regionsData.map(r => r.name);
-//    const resMunicipalities = await fetch("/api/data/municipalities");
-//    municipalitiesList = await resMunicipalities.json();
 
-//    const resSaved = await fetch("/api/user/locations");
-//    selectedLocations = await resSaved.json();
-//  } catch (err) {
-//    console.error("[DEBUG] Error loading locations:", err);
-//  }
-//}
+  async function loadKeywords() {
+    keywordsError = "";
 
-//onMount(loadLocations);
+    const response = await fetch("/api/user/keywords");
+    if (!response.ok) {
+      keywordsError = response.status === 401
+        ? "You must be signed in to load keywords."
+        : "Failed to load keywords.";
+      return;
+    }
+
+    const data = await response.json() as Keyword[];
+    savedIncludeKeywords = data
+      .filter((keyword) => keyword.type === "include" && keyword.keyword.trim().length > 0)
+      .map((keyword) => ({ ...keyword, keyword: keyword.keyword.trim() }))
+      .sort((left, right) => byLabel(left.keyword, right.keyword));
+
+    const includeKeywords = savedIncludeKeywords
+      .map((keyword) => keyword.keyword)
+      .filter(Boolean);
+
+    selectedJobTitles = includeKeywords;
+  }
+
+  async function loadJobTitleOptions() {
+    keywordsError = "";
+
+    const response = await fetch("/api/jobs/titles");
+    if (!response.ok) {
+      keywordsError = "Failed to load job title suggestions.";
+      return;
+    }
+
+    const titles = await response.json() as string[];
+    jobTitleOptions = titles;
+  }
+
+  async function addKeyword(keywordInput: string, type: "include" | "exclude") {
+    const keyword = keywordInput.trim();
+    if (!keyword) {
+      return null;
+    }
+
+    keywordsError = "";
+
+    const response = await fetch("/api/user/keywords", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ keyword, type })
+    });
+
+    if (!response.ok) {
+      keywordsError = response.status === 401
+        ? "You must be signed in to save keywords."
+        : "Failed to save keyword.";
+      return null;
+    }
+
+    const inserted = await response.json() as Keyword;
+    if (inserted.type === "include" && !jobTitleOptions.includes(inserted.keyword)) {
+      jobTitleOptions = [...jobTitleOptions, inserted.keyword].sort(byLabel);
+      savedIncludeKeywords = [...savedIncludeKeywords, { ...inserted, keyword: inserted.keyword.trim() }]
+        .sort((left, right) => byLabel(left.keyword, right.keyword));
+    }
+
+    return inserted.type === "include" ? inserted.keyword : keyword;
+  }
+
+  async function removeKeyword(keywordId: string) {
+    keywordsError = "";
+
+    const keywordToRemove = savedIncludeKeywords.find((keyword) => keyword.id === keywordId);
+    if (!keywordToRemove) {
+      return;
+    }
+
+    const response = await fetch("/api/user/keywords", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ keywordId })
+    });
+
+    if (!response.ok) {
+      keywordsError = response.status === 401
+        ? "You must be signed in to remove keywords."
+        : "Failed to remove keyword.";
+      return;
+    }
+
+    savedIncludeKeywords = savedIncludeKeywords.filter((keyword) => keyword.id !== keywordId);
+    selectedJobTitles = selectedJobTitles.filter((title) => title !== keywordToRemove.keyword);
+    jobTitleOptions = jobTitleOptions.filter((title) => title !== keywordToRemove.keyword);
+  }
+
+  async function saveJobSelection(titles: string[]) {
+    keywordsError = "";
+
+    const normalizedTitles = [...new Set(titles.map((title) => title.trim()).filter(Boolean))].sort(byLabel);
+    const savedTitleSet = new Set(savedIncludeKeywords.map((keyword) => keyword.keyword));
+    const missingTitles = normalizedTitles.filter((title) => !savedTitleSet.has(title));
+    const removedKeywords = savedIncludeKeywords.filter((keyword) => !normalizedTitles.includes(keyword.keyword));
+
+    for (const keyword of removedKeywords) {
+      await removeKeyword(keyword.id);
+
+      if (keywordsError) {
+        return;
+      }
+    }
+
+    for (const title of missingTitles) {
+      const inserted = await addKeyword(title, "include");
+
+      if (!inserted) {
+        keywordsError = keywordsError || "Failed to save one or more selected titles.";
+        return;
+      }
+    }
+
+    selectedJobTitles = normalizedTitles;
+    showJobModal = false;
+    await refreshJobSelectionState();
+  }
+
+  async function refreshJobSelectionState() {
+    await Promise.all([
+      loadKeywords(),
+      loadJobTitleOptions()
+    ]);
+  }
+
+  async function closeJobModal() {
+    showJobModal = false;
+    await refreshJobSelectionState();
+  }
+
+  function toggleJobTitle(title: string) {
+    if (selectedJobTitles.includes(title)) {
+      selectedJobTitles = selectedJobTitles.filter((selectedTitle) => selectedTitle !== title);
+      return;
+    }
+
+    selectedJobTitles = [...selectedJobTitles, title].sort(byLabel);
+  }
+
+  function toggleReview(job: SearchJob) {
+    void saveOrRemoveReview(job);
+  }
+
+  function showJobDetail(job: SearchJob) {
+    selectedJobDetail = job;
+    showDetails = true;
+  }
 
   function closeDetail() {
-    showDetails = false;
     selectedJobDetail = null;
-  }
-  async function loadKeywords() {
-    console.log('[DEBUG][Frontend] Loading keywords...');
-    try {
-      const res = await fetch('/api/user/keywords');
-      if (!res.ok) throw new Error('Failed to fetch keywords');
-      const data = await res.json();
-      console.log('[DEBUG][Frontend] Fetched keywords:', data);
-
-      const includeKeywords = data.filter(k => k.type === 'include');
-      jobTitlesList = includeKeywords.map(k => k.keyword.trim());
-    } catch (err) {
-      console.error('[DEBUG][Frontend] Error loading keywords:', err);
-    }
+    showDetails = false;
   }
 
-async function saveSelectedKeywords() {
-  if (selectedKeywords.length === 0) return;
+  async function loadPrompts() {
+    const response = await fetch("/api/user/prompts");
 
-  // Convert selectedKeywords objects into string array
-  const selectedKeywordTexts = selectedKeywords.map(k => k.keyword.trim());
-
-  // Add new keywords to jobTitlesList (string[])
-  const newKeywords = selectedKeywordTexts.filter(kw => !jobTitlesList.includes(kw));
-  if (newKeywords.length > 0) {
-    jobTitlesList = [...jobTitlesList, ...newKeywords];
-  }
-
-  // Add to selectedJobTitles (string[])
-  const newSelectedTitles = selectedKeywordTexts.filter(kw => !selectedJobTitles.includes(kw));
-  if (newSelectedTitles.length > 0) {
-    selectedJobTitles = [...selectedJobTitles, ...newSelectedTitles];
-  }
-
-  // Save the selectedKeywords objects to the backend
-  try {
-    const res = await fetch('/api/user/selected-keywords', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keywords: selectedKeywords }) // still sending objects
-    });
-
-    if (!res.ok) throw new Error('Failed to save selected keywords');
-
-    const result = await res.json();
-    console.log('[DEBUG][Frontend] Saved selected keywords:', result);
-  } catch (err) {
-    console.error('[DEBUG][Frontend] Error saving selected keywords:', err);
-  }
-
-  // Reset input and selection
-  searchKeyword = "";
-  selectedKeywords = [];
-}
-    async function addKeyword() {
-    if (!newKeyword.trim()) return;
-
-    console.log('[DEBUG][Frontend] Adding keyword:', newKeyword, 'type:', newType);
-
-    try {
-      const res = await fetch('/api/user/keywords', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: newKeyword, type: newType }) // ✅ send "keyword"
-      });
-
-      if (!res.ok) throw new Error('Failed to add keyword');
-
-      const inserted = await res.json();
-      console.log('[DEBUG][Frontend] Keyword inserted:', inserted);
-
-      // Only add "include" keywords to jobTitlesList
-      if (inserted.type === 'include') {
-        jobTitlesList = [...jobTitlesList, inserted.keyword];
+    if (!response.ok) {
+      if (response.status !== 401) {
+        reviewError = "Failed to load saved prompts.";
       }
-
-      newKeyword = ''; // clear input
-    } catch (err) {
-      console.error('[DEBUG][Frontend] Error adding keyword:', err);
-    }
-  }
-
-  async function deleteKeyword(keywordObj) { //Tror fortfarande används bara inte är implementerad i ux
-    console.log('[DEBUG][Frontend] Deleting keyword:', keywordObj);
-
-    try {
-      const res = await fetch('/api/user/keywords', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywordId: keywordObj.id })
-      });
-
-      if (!res.ok) throw new Error('Failed to delete keyword');
-
-      const result = await res.json();
-      console.log('[DEBUG][Frontend] Delete result:', result);
-
-      // Remove from local list
-      jobTitlesList = jobTitlesList.filter(k => k !== keywordObj.keyword);
-    } catch (err) {
-      console.error('[DEBUG][Frontend] Error deleting keyword:', err);
-    }
-  }
-
-
-//Key handling TODO: Organisera dina funktioner
-     
-
-
-function copyPrompt(payload: string) {
-    navigator.clipboard.writeText(payload);
-  }
-
-
-
-  // Toggle job titles
-  function toggleJob(title) {
-    if (selectedJobTitles.includes(title)) {
-      selectedJobTitles = selectedJobTitles.filter(t => t !== title);
-    } else {
-      selectedJobTitles = [...selectedJobTitles, title];
-    }
-  }
-
-  // Toggle regions
-  function toggleRegion(region: Region) {
-  console.log("[DEBUG] toggleRegion called with:", region);
-  if (selectedRegions.includes(region)) {
-    selectedRegions = selectedRegions.filter(r => r !== region);
-  } else {
-    selectedRegions = [...selectedRegions, region];
-  }
-}
-
-function showJobDetail(job: jobs) {
-  selectedJobDetail = job; // only now the modal shows
-  showDetails = true;
-}
-
-async function loadPrompts() {
-  try {
-    const res = await fetch("/api/user/prompts");
-
-    if (res.status === 401) {
       savedPrompts = [];
       return;
     }
 
-    if (!res.ok) {
-      throw new Error("Failed to fetch prompts");
-    }
-
-    const data = await res.json();
+    const data = await response.json() as UserPrompt[];
     savedPrompts = Array.isArray(data) ? data : [];
-  } catch (err) {
-    console.error("[ERROR] Failed to load prompts:", err);
-    savedPrompts = [];
   }
-}
 
+  function copyPrompt(payload: string) {
+    navigator.clipboard.writeText(payload);
+  }
 
+  async function searchJobs() {
+    searchError = "";
+    isSearching = true;
 
+    const activeRegionNames = Array.from(activeRegions)
+      .map((regionId) => regionById.get(regionId)?.name)
+      .filter(isDefined);
+    const activeMunicipalityNames = Array.from(activeMunicipalities)
+      .map((municipalityId) => municipalityById.get(municipalityId)?.name)
+      .filter(isDefined);
+    const activePlaceLabels = [...new Set([...activeRegionNames, ...activeMunicipalityNames])];
+    const activeTitles = [...selectedJobTitles];
 
-async function searchStoredJobs() { // Min nuvarande sök
-    if (selectedJobTitles.length === 0) return;
+    lastSearchPlaces = activePlaceLabels;
+    lastSearchTitles = activeTitles;
 
-    const params = {
-      regions: selectedRegions,
-      jobTitles: selectedJobTitles,
+    const payload = {
+      regions: activeRegionNames,
+      municipalities: activeMunicipalityNames,
+      jobTitles: activeTitles,
       keyword: searchKeyword
     };
 
     try {
-      const res = await fetch("api/jobs/search", {
+      const response = await fetch("/api/jobs/search", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params)
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
+      if (!response.ok) {
+        searchError = "Failed to search jobs.";
+        return;
+      }
 
-      filteredResults = data.map(job => ({
+      const data = await response.json() as SearchJob[];
+      filteredResults = data.map((job) => ({
         ...job,
-        _selected: false,
+        _selected: savedJobIds.has(job.id),
         application_deadline_simple: job.application_deadline_simple || ""
       }));
-    } catch (err) {
-      console.error("Failed to search stored jobs:", err);
+    } finally {
+      isSearching = false;
     }
   }
-function toggleAllRegions() { //DEP
-  if (selectedRegions.length === regionsList.length) {
-    selectedRegions = []; // deselect all
-  } else {
-    selectedRegions = [...regionsList]; 
-  }
-}
 
-function toggleAllJobTitles() {
-  if (selectedJobTitles.length === jobTitlesList.length) {
-    selectedJobTitles = []; 
-  } else {
-    selectedJobTitles = [...jobTitlesList]; 
-  }
-}
+  async function loadSavedJobs() {
+    reviewError = "";
 
-function toggleReview(job:jobs) {
-  if (reviewList.some(j => j.id === job.id)) {
-    reviewList = reviewList.filter(j => j.id !== job.id);
-  } else {
-    reviewList = [...reviewList, job];
-  }
-}
-
-onMount(loadKeywords);
-onMount(loadPrompts);
-  onMount(async () => {
-    regions = await fetch("/api/data/regions").then(r => r.json()); //De här laddas till min modal.. Det borde de inte göra? Eller? 
-    municipalities = await fetch("/api/data/municipalities").then(r => r.json());
-
-  });
-onMount(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedJobDetail) {
-        selectedJobDetail = null;
+    const savedResponse = await fetch("/api/user/savedJobs");
+    if (!savedResponse.ok) {
+      if (savedResponse.status !== 401) {
+        reviewError = "Failed to load saved jobs.";
       }
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  });
-
-
-onMount(() => {
-	const handleKey = (e: KeyboardEvent) => {
-		if (e.key === "Escape") {
-      showDetails = false;
-      selectedJobDetail = null;
+      return;
     }
-	};
 
-	window.addEventListener("keydown", handleKey);
+    const savedRows = await savedResponse.json() as Array<{ jobId: string }>;
+    const jobIds = savedRows.map((row) => row.jobId).filter(Boolean);
 
-	return () => {
-		window.removeEventListener("keydown", handleKey);
-	};
-});
+  if (jobIds.length === 0) {
+      reviewList = [];
+      return;
+    }
 
+    const jobsResponse = await fetch("/api/jobs/JobById", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ jobIds })
+    });
 
+    if (!jobsResponse.ok) {
+      reviewError = "Failed to load saved job details.";
+      return;
+    }
+
+    const jobs = await jobsResponse.json() as SearchJob[];
+    reviewList = jobs.map((job) => ({
+      ...job,
+      application_deadline_simple: job.application_deadline_simple || ""
+    }));
+  }
+
+  async function saveOrRemoveReview(job: SearchJob) {
+    reviewError = "";
+    const alreadySaved = reviewList.some((saved) => saved.id === job.id);
+
+    const response = await fetch("/api/user/savedJobs", {
+      method: alreadySaved ? "DELETE" : "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ jobId: job.id })
+    });
+
+    if (!response.ok) {
+      reviewError = response.status === 401
+        ? "You must be signed in to save jobs."
+        : "Failed to update saved jobs.";
+      return;
+    }
+
+    if (alreadySaved) {
+      reviewList = reviewList.filter((saved) => saved.id !== job.id);
+    } else {
+      reviewList = [...reviewList, job];
+    }
+
+    filteredResults = filteredResults.map((result) => ({
+      ...result,
+      _selected: reviewList.some((saved) => saved.id === result.id) || (!alreadySaved && result.id === job.id)
+    }));
+  }
+
+  function getAvailableMunicipalitiesForRegion(regionId: string) {
+    return (municipalitiesByRegionId.get(regionId) ?? []).filter(
+      (municipality) => municipality.regionId === regionId && availableMunicipalities.has(municipality.id)
+    );
+  }
+
+  function toggleActiveRegion(regionId: string) {
+    const regionMunicipalities = getAvailableMunicipalitiesForRegion(regionId);
+    const nextActiveRegions = new Set(activeRegions);
+    const nextActiveMunicipalities = new Set(activeMunicipalities);
+
+    if (nextActiveRegions.has(regionId)) {
+      nextActiveRegions.delete(regionId);
+      for (const municipality of regionMunicipalities) {
+        nextActiveMunicipalities.delete(municipality.id);
+      }
+    } else {
+      nextActiveRegions.add(regionId);
+      for (const municipality of regionMunicipalities) {
+        nextActiveMunicipalities.add(municipality.id);
+      }
+    }
+
+    activeRegions = nextActiveRegions;
+    activeMunicipalities = nextActiveMunicipalities;
+  }
+
+  function toggleActiveMunicipality(municipalityId: string) {
+    const municipality = municipalityById.get(municipalityId);
+
+    if (!municipality) {
+      return;
+    }
+
+    const regionMunicipalities = getAvailableMunicipalitiesForRegion(municipality.regionId);
+    const nextActiveRegions = new Set(activeRegions);
+    const nextActiveMunicipalities = new Set(activeMunicipalities);
+
+    if (nextActiveMunicipalities.has(municipalityId)) {
+      nextActiveMunicipalities.delete(municipalityId);
+      nextActiveRegions.delete(municipality.regionId);
+    } else {
+      nextActiveMunicipalities.add(municipalityId);
+
+      const allMunicipalitiesActive = regionMunicipalities.every((candidate) =>
+        nextActiveMunicipalities.has(candidate.id)
+      );
+
+      if (allMunicipalitiesActive && availableRegions.has(municipality.regionId)) {
+        nextActiveRegions.add(municipality.regionId);
+      }
+    }
+
+    activeRegions = nextActiveRegions;
+    activeMunicipalities = nextActiveMunicipalities;
+  }
+
+  function isLocationActive(location: LocationSelection) {
+    return location.type === "region"
+      ? activeRegions.has(location.id)
+      : activeMunicipalities.has(location.id);
+  }
+
+  const regionById = $derived.by(() => new Map(regions.map((region) => [region.id, region])));
+  const municipalityById = $derived.by(() => new Map(municipalities.map((municipality) => [municipality.id, municipality])));
+  const municipalitiesByRegionId = $derived.by(() => {
+    const next = new Map<string, MunicipalityOption[]>();
+
+    for (const municipality of municipalities) {
+      const bucket = next.get(municipality.regionId);
+      if (bucket) {
+        bucket.push(municipality);
+      } else {
+        next.set(municipality.regionId, [municipality]);
+      }
+    }
+
+    return next;
+  });
+  const savedJobIds = $derived.by(() => new Set(reviewList.map((job) => job.id)));
+
+  const groupedLocations = $derived<GroupedLocations[]>(
+    Array.from(availableRegions)
+      .map((regionId) => {
+        const region = regionById.get(regionId);
+
+        if (!region) {
+          return null;
+        }
+
+        return {
+          region: { id: region.id, label: region.name, type: "region" as const },
+          municipalities: (municipalitiesByRegionId.get(regionId) ?? [])
+            .filter((municipality) => availableMunicipalities.has(municipality.id))
+            .map((municipality) => ({
+            id: municipality.id,
+            label: municipality.name,
+            type: "municipality" as const
+          }))
+        };
+      })
+      .filter(isDefined)
+  );
+
+  const activeLocationLabels = $derived<LocationSelection[]>([
+    ...Array.from(activeRegions)
+      .map((id) => regionById.get(id))
+      .filter(isDefined)
+      .map((region) => ({ id: region.id, label: region.name, type: "region" as const })),
+    ...Array.from(activeMunicipalities)
+      .map((id) => municipalityById.get(id))
+      .filter(isDefined)
+      .map((municipality) => ({ id: municipality.id, label: municipality.name, type: "municipality" as const }))
+  ]);
+
+  $effect(() => {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(subscriptionLocationStorageKey, JSON.stringify(activeLocationLabels));
+    localStorage.setItem(subscriptionTitleStorageKey, JSON.stringify(selectedJobTitles));
+  });
 </script>
-<style>
-  
-	h2 { margin-top: 30px; }
-	table { border-collapse: collapse; width: 100%; margin-top: 10px; }
-	th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-	button { margin-top: 10px; }
-	button:disabled { opacity: 0.5; cursor: not-allowed; }
-</style>
-{#if data.user}
-	<h1>Hi {data.user.name}, </h1>
-{:else}
-	<h1>Hi guest</h1>
-{/if}
 
-<button type="button" class="preset-filled-primary-500" onclick={() => showLocationModal = true}>
-Vilka regioner/kommuner vill du söka jobb i?
-</button>
-<h3 class="mb-2">Dina sparade platser:</h3> 
-<div class="chips">
-  {#each displayedLocations as loc}
-    <div class="chip">{loc.label}</div>
-  {/each}
-</div>
-
-<h3>Lägg till ny sökterm</h3>
-<input bind:value={newKeyword} placeholder="Keyword" />
-<select bind:value={newType}>
-  <option value="include">Inkluderande nyckelord</option>
-  <option value="exclude">Exkluderande nyckelord</option>
-</select>
-<button onclick={addKeyword}>Spara</button>
-
-<!--
-<div style="margin-top: 10px;">
-
-
-// {#if extractedKeywords.length > 0}
-//   <div class="keyword-list" style="margin-top: 10px;">
-//     <p>Välj vilka nyckelord du vill spara:</p>
-//     {#each extractedKeywords as kw}
-//       <label style="display: block; margin-bottom: 4px;">
-//         <input type="checkbox"
-//                bind:group={selectedKeywords}
-//                value={kw} />
-//         {kw}
-//       </label>
-//     {/each}
-//   </div>
-//   <button class="btn" onclick={saveSelectedKeywords}>
-//     Spara valda nyckelord
-//   </button>
-// {/if}
-
-//<hr class="hr border-t-8" />
-</div>
-*/ -->
-  <h3 class="mb-2">Dina sparade nyckelord:</h3>
-  <div class="flex flex-wrap gap-2 mb-4">
-    {#each jobTitlesList as title}
-  <button
-    class="{selectedJobTitles.includes(title) ? 'preset-filled-primary-500' : 'btn-outline'}"
-    type="button"
-    onclick={() => toggleJob(title)}
-  >
-    {title}
-  </button>
-{/each}
-<button type="button" class="btn small-btn" onclick={toggleAllJobTitles}>
-    {selectedJobTitles.length === jobTitlesList.length ? "Deselect All" : "Select All"}
-  </button>
+<section class="debug-page">
+  <div class="page-intro">
+    <p class="eyebrow">Search Workspace</p>
+    <h2>Geografisk plats</h2>
+    <p class="page-copy">Välj var du vill söka jobb någonstan.</p>
   </div>
- <div>
-<hr class="hr border-t-8" />
- </div>
-<div style="margin-top:20px;">
-<button type="button" class="btn preset-filled-primary-500" onclick={searchStoredJobs}>
-Sök Britt-marie för fa-an!
-</button>
-</div>
 
+  <button class="open-modal-button" onclick={() => showModal = true}>
+  Välj kommun/region! 
+  </button>
 
-   
+  {#if locationError}
+    <p class="error-message">{locationError}</p>
+  {/if}
+  {#if reviewError}
+    <p class="error-message">{reviewError}</p>
+  {/if}
 
-<h2>Search Results</h2>
-<table>
-	<thead>
-	<tr>
-		<th>Spara</th>
-		<th>Titel</th>
-		<th>Arbetsgivare</th>
-		<th>Kommun</th>
-		<th>Ansöknings deadline</th>
-	</tr>
-	</thead>
-	<tbody>
-	{#each filteredResults as job}
-<tr>
-  <td>
-    <button
-  class="{reviewList.some(j => j.id === job.id) ? 'preset-filled-primary-500' : 'btn-outline'} small-btn"
-  onclick={() => toggleReview(job)}
->
-  {reviewList.some(j => j.id === job.id) ? "Saved" : "Save"}
-</button>
-  </td>
-  <td><a href={job.webpage_url} target="_blank">{job.headline}</a></td>
-  <td>{job.employer_name}</td>
-  <td>{job.municipality}</td>
-  <td>{job.application_deadline}</td>
-</tr>
-{/each}
-	</tbody>
-</table>
+  {#if groupedLocations.length > 0}
+    <div class="selected-locations">
+      {#each groupedLocations as group}
+        <section class="location-group">
+          <button
+            type="button"
+            class="location-chip region {isLocationActive(group.region) ? 'active' : ''}"
+            onclick={() => toggleActiveRegion(group.region.id)}
+            aria-pressed={isLocationActive(group.region)}
+          >
+            {group.region.label}
+          </button>
 
-<h3 class="mb-2">Alla aktiva platser</h3>
-<div class="chips">
-  {#each activeDisplayedLocations as loc}
-    <div class="chip">{loc.label}</div>
-  {/each}
-</div>
+          {#if group.municipalities.length > 0}
+            <div class="municipality-list">
+              {#each group.municipalities as municipality}
+                <button
+                  type="button"
+                  class="location-chip municipality {isLocationActive(municipality) ? 'active' : ''}"
+                  onclick={() => toggleActiveMunicipality(municipality.id)}
+                  aria-pressed={isLocationActive(municipality)}
+                >
+                  {municipality.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </section>
+      {/each}
+    </div>
+  {:else}
+    <p class="empty-state">Du har ännu inte valt några platser.</p>
+  {/if}
 
+  <section class="tool-panel">
+    <div class="section-heading">
+      <h3>Jobb titlar</h3>
+      <p>Välj titlarna du vill söka på.</p>
+    </div>
 
-<!-- Review List -->
-<h2>Review List</h2>
-<table>
-	<thead>
-	<tr>
-		<th>Headline</th>
-		<th>Employer</th>
-		<th>Municipality</th>
-		<th>Deadline</th>
-		<th>View</th>
-	</tr>
-	</thead>
-	<tbody>
-	{#each reviewList as job}
-		<tr>
-			<td>{job.headline}</td>
-			<td>{job.employer_name}</td>
-			<td>{job.municipality}</td>
-			<td>{job.application_deadline_simple}</td>
-			<td><button onclick={() => showJobDetail(job)}>View</button></td>
-		</tr>
-	{/each}
-	</tbody>
-</table>
+    <button type="button" class="action-button" onclick={() => showJobModal = true}>Välj jobbtitlar här.</button>
 
-{#if showDetails}
+    {#if keywordsError}
+      <p class="error-message">{keywordsError}</p>
+    {/if}
+
+    {#if savedIncludeKeywords.length > 0}
+      <div class="keyword-list">
+        {#each savedIncludeKeywords as keyword (keyword.id)}
+          <button
+            type="button"
+            class="keyword-chip {selectedJobTitles.includes(keyword.keyword) ? 'active' : ''}"
+            onclick={() => toggleJobTitle(keyword.keyword)}
+            aria-pressed={selectedJobTitles.includes(keyword.keyword)}
+          >
+            {keyword.keyword}
+          </button>
+        {/each}
+      </div>
+    {:else}
+      <p class="empty-state">Ännu inga sparade titlar.</p>
+    {/if}
+  </section>
+
+  <section class="tool-panel">
+    <div class="section-heading">
+      <h3>Sök!</h3>
+      <p>Sök de valda kombinationerna</p>
+    </div>
+
+    <div class="search-controls">
+      <input bind:value={searchKeyword} placeholder="Optional headline keyword" />
+    </div>
+
+    {#if searchError}
+      <p class="error-message">{searchError}</p>
+    {/if}
+
+    {#if isSearching}
+      <p class="status-message">Söker...</p>
+    {/if}
+
+    {#if activeLocationLabels.length > 0}
+      <div class="active-location-list">
+        {#each activeLocationLabels as location}
+          <span class="active-location-chip">{location.label}</span>
+        {/each}
+      </div>
+    {/if}
+
+    <button type="button" class="search-cta" onclick={searchJobs} disabled={isSearching}>
+      {isSearching ? "Söker..." : "Sök!"}
+    </button>
+  </section>
+
+  <section class="tool-panel">
+    <div class="section-heading">
+      <h3>Sökresultat</h3>
+      <p>Spara de jobb som är intressanta!</p>
+    </div>
+
+    {#if filteredResults.length > 0}
+      <div class="table-shell">
+        <table>
+          <thead>
+            <tr>
+              <th>Spara</th>
+              <th>Jobb</th>
+              <th>Arbetsgivare</th>
+              <th>Kommun</th>
+              <th>Ansökningsdeadline</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each filteredResults as job}
+              <tr>
+                <td>
+                  <button
+                    type="button"
+                    class="table-action {savedJobIds.has(job.id) ? 'active' : ''}"
+                    onclick={() => toggleReview(job)}
+                  >
+                    {savedJobIds.has(job.id) ? "Saved" : "Save"}
+                  </button>
+                </td>
+                <td><a href={job.webpage_url ?? "#"} target="_blank" rel="noreferrer">{job.headline}</a></td>
+                <td>{job.employer_name}</td>
+                <td>{job.municipality}</td>
+                <td>{job.application_deadline_simple ?? job.application_deadline ?? ""}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else if !isSearching && lastSearchTitles.length > 0}
+      <p class="empty-state">
+        Inga resultat pa
+        {#if lastSearchTitles.length > 0}
+          &nbsp;[{lastSearchTitles.join(", ")}]
+        {/if}
+        {#if lastSearchPlaces.length > 0}
+          &nbsp;i [{lastSearchPlaces.join(", ")}]
+        {/if}
+      </p>
+    {:else}
+      <p class="empty-state">Annu inga sokresultat.</p>
+    {/if}
+  </section>
+
+</section>
+
+<LocationModal
+  {regions}
+  {municipalities}
+  {selectedLocations}
+  open={showModal}
+  onSave={saveModal}
+  onClose={() => showModal = false}
+/>
+
+<JobSelectionModal
+  open={showJobModal}
+  availableTitles={jobTitleOptions}
+  selectedTitles={selectedJobTitles}
+  keywordError={keywordsError}
+  onSave={saveJobSelection}
+  onClose={closeJobModal}
+  onAddKeyword={addKeyword}
+/>
+
+{#if showDetails && selectedJobDetail}
   <JobDetailModal
     job={selectedJobDetail}
     prompts={savedPrompts}
@@ -557,12 +735,278 @@ Sök Britt-marie för fa-an!
   />
 {/if}
 
+<style>
+  .debug-page {
+    display: grid;
+    gap: 1rem;
+    padding: 1.25rem;
+    border-radius: var(--radius-container);
+    background: var(--color-surface-800);
+    border: 1px solid var(--color-surface-600);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+  }
 
-<LocationModal
-  {regions}
-  {municipalities}
-  {selectedLocations}
-  open={showLocationModal}
-  onSave={saveModal}
-  onClose={() => showLocationModal = false}
-/>
+  .page-intro {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .page-intro h2,
+  .page-intro p {
+    margin: 0;
+  }
+
+  .eyebrow {
+    color: var(--color-warning-400);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+
+  .page-copy {
+    color: var(--color-primary-300);
+    max-width: 42rem;
+  }
+
+  .open-modal-button {
+    width: fit-content;
+    border: 1px solid color-mix(in srgb, var(--color-secondary-300) 24%, transparent);
+    border-radius: 999px;
+    background: var(--color-secondary-500);
+    color: var(--color-secondary-contrast-500);
+    padding: 0.7rem 1.15rem;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.14s ease, filter 0.14s ease, border-color 0.14s ease;
+  }
+
+  .selected-locations {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .tool-panel {
+    display: grid;
+    gap: 0.9rem;
+    padding: 1rem;
+    border-radius: calc(var(--radius-container) * 0.9);
+    background: var(--color-surface-700);
+    border: 1px solid var(--color-surface-600);
+  }
+
+  .section-heading {
+    display: grid;
+    gap: 0.2rem;
+  }
+
+  .section-heading h3,
+  .section-heading p {
+    margin: 0;
+  }
+
+  .section-heading p {
+    color: var(--color-primary-400);
+  }
+
+  .error-message {
+    margin: 0;
+    color: var(--color-error-400);
+  }
+
+  .status-message {
+    margin: 0;
+    color: var(--color-secondary-300);
+  }
+
+  .empty-state {
+    margin: 0;
+    color: var(--color-primary-400);
+  }
+
+  .location-group {
+    padding: 1rem;
+    border-radius: calc(var(--radius-container) * 0.9);
+    background: var(--color-surface-700);
+    border: 1px solid var(--color-surface-600);
+  }
+
+  .municipality-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+
+  .location-chip {
+    border: 0;
+    border-radius: 999px;
+    padding: 0.5rem 0.9rem;
+    cursor: pointer;
+    font: inherit;
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  }
+
+  .location-chip.region {
+    background: var(--color-surface-600);
+    color: var(--base-font-color);
+    border: 1px solid var(--color-surface-500);
+  }
+
+  .location-chip.region.active {
+    background: var(--color-secondary-500);
+    color: var(--color-secondary-contrast-500);
+  }
+
+  .location-chip.municipality {
+    background: var(--color-surface-700);
+    color: var(--color-primary-300);
+    border: 1px solid var(--color-surface-600);
+  }
+
+  .location-chip.municipality.active {
+    background: var(--color-tertiary-500);
+    color: var(--color-tertiary-contrast-500);
+  }
+
+  .search-controls {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .search-controls input {
+    width: 100%;
+    padding: 0.75rem 0.9rem;
+    border-radius: 0.85rem;
+    border: 1px solid var(--color-surface-600);
+    background: var(--color-surface-900);
+    color: var(--base-font-color);
+    font: inherit;
+  }
+
+  .search-cta {
+    justify-self: center;
+    min-width: 10rem;
+    min-height: 10rem;
+    padding: 1.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-tertiary-500);
+    background: var(--color-tertiary-500);
+    color: var(--color-tertiary-contrast-500);
+    font: inherit;
+    font-size: 1.25rem;
+    font-weight: 800;
+    cursor: pointer;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+  }
+
+  .search-cta:disabled {
+    opacity: 0.75;
+    cursor: wait;
+  }
+
+  .keyword-list,
+  .active-location-list {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .action-button,
+  .keyword-chip,
+  .table-action,
+  .active-location-chip {
+    padding: 0.7rem 1rem;
+    border-radius: 999px;
+    font: inherit;
+  }
+
+  .action-button,
+  .table-action {
+    border: 1px solid var(--color-surface-500);
+    background: var(--color-secondary-500);
+    color: var(--color-secondary-contrast-500);
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  .keyword-chip {
+    border: 1px solid var(--color-surface-500);
+    background: var(--color-surface-600);
+    color: var(--base-font-color);
+    cursor: pointer;
+  }
+
+  .keyword-chip.active {
+    background: var(--color-warning-500);
+    color: var(--color-warning-contrast-500);
+    border-color: transparent;
+  }
+
+  .active-location-chip {
+    background: var(--color-surface-800);
+    color: var(--color-primary-300);
+    border: 1px solid var(--color-surface-600);
+  }
+
+  .table-shell {
+    overflow-x: auto;
+    border-radius: 1rem;
+    border: 1px solid var(--color-surface-600);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--color-surface-800);
+  }
+
+  th,
+  td {
+    padding: 0.85rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--color-surface-700);
+  }
+
+  th {
+    color: var(--color-primary-300);
+    font-size: 0.9rem;
+  }
+
+  td a {
+    color: var(--color-tertiary-300);
+  }
+
+  .table-action.active {
+    background: var(--color-secondary-500);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .open-modal-button {
+      transition: background 0.14s ease 100ms, filter 0.14s ease 100ms, border-color 0.14s ease 100ms;
+    }
+
+    .open-modal-button:hover {
+      filter: brightness(1.05);
+    }
+
+    .location-chip {
+      transition: background 0.14s ease 100ms, color 0.14s ease 100ms, border-color 0.14s ease 100ms;
+    }
+
+    .location-chip.region:hover {
+      background: var(--color-surface-500);
+    }
+
+    .location-chip.municipality:hover {
+      background: var(--color-surface-600);
+    }
+
+    .action-button:hover,
+    .table-action:hover,
+    .search-cta:hover {
+      filter: brightness(1.05);
+    }
+  }
+</style>

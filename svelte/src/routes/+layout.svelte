@@ -6,7 +6,8 @@ let { children, data } = $props();
 
 const navItems = [
 	{ href: '/', label: 'Home' },
-	{ href: '/debug', label: 'Debug' },
+	{ href: '/prenumerationer', label: 'Prenumerationer' },
+	{ href: '/sparade-jobb', label: 'Sparade jobb' },
 	{ href: '/about', label: 'About' }
 ];
 

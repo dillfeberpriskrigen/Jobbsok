@@ -123,6 +123,23 @@ export const savedJobs = mysqlTable(
   (table) => [index("session_userId_idx").on(table.userId)],
 );
 
+export const subscriptions = mysqlTable(
+  "subscriptions",
+  {
+    id: varchar("id", { length: 36 }).primaryKey(),
+    title: text("title").notNull(),
+    userId: varchar("user_id", { length: 36 })
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    regionId: varchar("region_id", { length: 36 })
+      .references(() => regions.id, { onDelete: "cascade" }),
+    municipalityId: varchar("municipality_id", { length: 36 })
+      .references(() => municipalities.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { fsp: 3 }).defaultNow().notNull(),
+  },
+  (table) => [index("subscriptions_userId_idx").on(table.userId)],
+);
+
 export const regions = mysqlTable('regions', {
   id: varchar('id', { length: 36 }).primaryKey(), // UUID or code
   name: varchar('name', { length: 255 }).notNull(),
@@ -183,8 +200,23 @@ export const promptsRelations = relations(prompts, ({ one }) => ({
     references: [user.id],
   }),
 }));
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  user: one(user, {
+    fields: [subscriptions.userId],
+    references: [user.id],
+  }),
+  region: one(regions, {
+    fields: [subscriptions.regionId],
+    references: [regions.id],
+  }),
+  municipality: one(municipalities, {
+    fields: [subscriptions.municipalityId],
+    references: [municipalities.id],
+  }),
+}));
 export const regionsRelations = relations(regions, ({ many }) => ({
   municipalities: many(municipalities), // region.municipalities will work in JS
+  subscriptions: many(subscriptions),
 }));
 
 export const municipalitiesRelations = relations(municipalities, ({ one }) => ({

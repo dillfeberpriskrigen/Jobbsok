@@ -1,8 +1,8 @@
-import { authDb } from '$lib/server/db';
-import { locations, municipalities, regions } from '$lib/server/db/authSchema';
+import { authDb } from '$lib/server/db.js';
+import { locations, municipalities, regions } from '$lib/server/db/authSchema.js';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import type { LocationSelection } from '$lib/types/location';
+import type { LocationSelection } from '$lib/types/location.js';
 import { eq, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 
@@ -145,7 +145,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   try {
     const normalizedMunicipalities = await normalizeSelections(normalizedInput);
 
-    await authDb.transaction(async (tx: typeof authDb) => {
+    await authDb.transaction(async (tx) => {
       await tx.delete(locations).where(eq(locations.userId, userId));
 
       if (normalizedMunicipalities.length === 0) {

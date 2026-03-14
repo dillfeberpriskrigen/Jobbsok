@@ -1,8 +1,8 @@
 // src/routes/api/municipalities/+server.ts
 
 import { json } from '@sveltejs/kit';
-import { authDb } from '$lib/server/db';
-import { municipalities } from '$lib/server/db/authSchema.ts';
+import { authDb } from '$lib/server/db.js';
+import { municipalities } from '$lib/server/db/authSchema.js';
 
 export async function GET() {
   console.log('[DEBUG][GET] /api/municipalities called');

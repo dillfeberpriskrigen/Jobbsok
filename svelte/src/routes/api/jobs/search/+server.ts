@@ -1,30 +1,38 @@
 // src/routes/api/jobs/search/+server.ts
-import { jobDb } from '$lib/server/db';
-import { jobs } from '$lib/server/db/jobSchema.ts';
+import { jobDb } from '$lib/server/db.js';
+import { jobs } from '$lib/server/db/jobSchema.js';
 import { json } from '@sveltejs/kit';
-import { and, or, inArray, sql } from 'drizzle-orm';
+import type { RequestHandler } from '@sveltejs/kit';
+import { and, desc, inArray, or, sql } from 'drizzle-orm';
 
-export async function POST({ request }) {
+export const POST: RequestHandler = async ({ request }) => {
   try {
     // Read payload safely
     const payload = await request.json();
     console.log('[DEBUG][POST] Payload received:', payload);
 
-    const regions = Array.isArray(payload.regions) ? payload.regions : [];
-    const jobTitles = Array.isArray(payload.jobTitles) ? payload.jobTitles : [];
+    const regions: unknown[] = Array.isArray(payload.regions) ? payload.regions : [];
+    const municipalities: unknown[] = Array.isArray(payload.municipalities) ? payload.municipalities : [];
+    const jobTitles: unknown[] = Array.isArray(payload.jobTitles) ? payload.jobTitles : [];
     const keyword = typeof payload.keyword === 'string' ? payload.keyword : '';
 
     // Clean & trim regions
     const cleanRegions = regions
-      .filter(r => r != null)
-      .map(r => r.toString().trim())
+      .filter((region): region is string | number => region != null)
+      .map((region) => region.toString().trim())
       .filter(Boolean);
     console.log('[DEBUG][POST] Cleaned Regions:', cleanRegions);
 
+    const cleanMunicipalities = municipalities
+      .filter((municipality): municipality is string | number => municipality != null)
+      .map((municipality) => municipality.toString().trim())
+      .filter(Boolean);
+    console.log('[DEBUG][POST] Cleaned Municipalities:', cleanMunicipalities);
+
     // Clean & trim job titles
     const cleanTitles = jobTitles
-      .filter(t => t != null)
-      .map(t => t.toString().trim())
+      .filter((title): title is string | number => title != null)
+      .map((title) => title.toString().trim())
       .filter(Boolean);
     console.log('[DEBUG][POST] Cleaned Job Titles:', cleanTitles);
 
@@ -35,8 +43,19 @@ export async function POST({ request }) {
     // Build conditions
     const conditions = [];
 
+    const locationConditions = [];
     if (cleanRegions.length > 0) {
-      conditions.push(inArray(jobs.region, cleanRegions));
+      locationConditions.push(inArray(jobs.region, cleanRegions));
+    }
+
+    if (cleanMunicipalities.length > 0) {
+      locationConditions.push(inArray(jobs.municipality, cleanMunicipalities));
+    }
+
+    if (locationConditions.length === 1) {
+      conditions.push(locationConditions[0]);
+    } else if (locationConditions.length > 1) {
+      conditions.push(or(...locationConditions));
     }
 
     const titleConditions = [];
@@ -56,12 +75,14 @@ export async function POST({ request }) {
     }
 
     // Build query
-    let query = jobDb.select().from(jobs);
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    query = query.orderBy(jobs.publication_date, 'desc');
+    const whereClause = conditions.length === 0
+      ? undefined
+      : conditions.length === 1
+        ? conditions[0]
+        : and(...conditions);
+    const query = whereClause
+      ? jobDb.select().from(jobs).where(whereClause).orderBy(desc(jobs.publication_date))
+      : jobDb.select().from(jobs).orderBy(desc(jobs.publication_date));
 
     // Debug final SQL
     console.log('Drizzle Query SQL:', query.toSQL?.() || 'Cannot get SQL');
@@ -74,4 +95,4 @@ export async function POST({ request }) {
     console.error('[ERROR][POST] /api/jobs/search failed:', error);
     return json({ error: 'Search failed' }, { status: 500 });
   }
-}
+};

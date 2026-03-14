@@ -1,5 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { jobs, occupationNames } from "./jobSchema";
+import { jobs, occupationNames } from "./jobSchema.js";
 
 export type Job = InferSelectModel<typeof jobs>;
 export type NewJob = InferInsertModel<typeof jobs>;

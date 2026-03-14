@@ -1,5 +1,5 @@
-import { authDb } from '$lib/server/db';
-import { prompts } from '$lib/server/db/authSchema';
+import { authDb } from '$lib/server/db.js';
+import { prompts } from '$lib/server/db/authSchema.js';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { and, asc, eq } from 'drizzle-orm';
@@ -70,7 +70,15 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   if (!content || typeof content !== 'string') throw error(400, 'content is required');
 
   try {
-    const result = await authDb
+    const existing = await authDb.query.prompts.findFirst({
+      where: and(eq(prompts.id, id), eq(prompts.userId, locals.user.id))
+    });
+
+    if (!existing) {
+      throw error(404, 'Prompt not found or unauthorized');
+    }
+
+    await authDb
       .update(prompts)
       .set({
         label: label.trim(),
@@ -79,10 +87,6 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
         updatedAt: new Date()
       })
       .where(and(eq(prompts.id, id), eq(prompts.userId, locals.user.id)));
-
-    if (result.rowsAffected === 0) {
-      throw error(404, 'Prompt not found or unauthorized');
-    }
 
     const updated = await authDb.query.prompts.findFirst({
       where: and(eq(prompts.id, id), eq(prompts.userId, locals.user.id))
@@ -107,13 +111,17 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
   if (!id || typeof id !== 'string') throw error(400, 'id is required');
 
   try {
-    const result = await authDb
-      .delete(prompts)
-      .where(and(eq(prompts.id, id), eq(prompts.userId, locals.user.id)));
+    const existing = await authDb.query.prompts.findFirst({
+      where: and(eq(prompts.id, id), eq(prompts.userId, locals.user.id))
+    });
 
-    if (result.rowsAffected === 0) {
+    if (!existing) {
       throw error(404, 'Prompt not found or unauthorized');
     }
+
+    await authDb
+      .delete(prompts)
+      .where(eq(prompts.id, id));
 
     return json({ success: true });
   } catch (err) {

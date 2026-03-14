@@ -1,6 +1,6 @@
 // src/routes/api/user/savedJobs/+server.ts
-import { authDb } from '$lib/server/db';
-import { savedJobs } from '$lib/server/db/authSchema';
+import { authDb } from '$lib/server/db.js';
+import { savedJobs } from '$lib/server/db/authSchema.js';
 import { json, error } from '@sveltejs/kit';
 import { and, eq } from 'drizzle-orm';
 import type { RequestHandler } from '@sveltejs/kit';
@@ -82,13 +82,17 @@ export const DELETE: RequestHandler = async ({ locals, request }) => {
   }
 
   try {
-    const result = await authDb.delete(savedJobs).where(
-      and(eq(savedJobs.jobId, jobId), eq(savedJobs.userId, locals.user.id))
-    );
+    const existing = await authDb.query.savedJobs.findFirst({
+      where: and(eq(savedJobs.jobId, jobId), eq(savedJobs.userId, locals.user.id))
+    });
 
-    if (result.rowsAffected === 0) {
+    if (!existing) {
       throw error(404, 'Job not found or unauthorized');
     }
+
+    await authDb.delete(savedJobs).where(
+      and(eq(savedJobs.jobId, jobId), eq(savedJobs.userId, locals.user.id))
+    );
 
     return json({ success: true });
   } catch (err) {

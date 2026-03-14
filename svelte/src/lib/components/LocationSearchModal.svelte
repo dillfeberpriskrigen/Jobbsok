@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { LocationSelection, MunicipalityOption, RegionOption } from "$lib/types/location";
+  import type { LocationSelection, MunicipalityOption, RegionOption } from "$lib/types/location.js";
 
   type FilteredRegion = RegionOption & { municipalities: MunicipalityOption[] };
 
@@ -23,10 +23,10 @@
 
   let search = $state("");
   let tempSelection: LocationSelection[] = $state([]);
+  let searchValue = $derived.by(() => search.trim().toLowerCase());
 
   $effect(() => {
     if (open) {
-      console.log("[DEBUG] Modal opened, copying selectedLocations to tempSelection:", selectedLocations);
       tempSelection = [...selectedLocations];
     }
   });
@@ -49,61 +49,69 @@
     };
   });
 
+  const municipalitiesByRegionId = $derived.by(() => {
+    const next = new Map<string, MunicipalityOption[]>();
+
+    for (const municipality of municipalities) {
+      const bucket = next.get(municipality.regionId);
+      if (bucket) {
+        bucket.push(municipality);
+      } else {
+        next.set(municipality.regionId, [municipality]);
+      }
+    }
+
+    return next;
+  });
+
+  const selectedRegionIds = $derived.by(
+    () => new Set(tempSelection.filter((location) => location.type === "region").map((location) => location.id))
+  );
+
+  const selectedMunicipalityIds = $derived.by(
+    () => new Set(tempSelection.filter((location) => location.type === "municipality").map((location) => location.id))
+  );
+
   function getMunicipalities(regionId: string) {
-    const result = municipalities.filter(m => m.regionId === regionId);
-    console.log(`[DEBUG] getMunicipalities(${regionId}) ->`, result);
-    return result;
+    return municipalitiesByRegionId.get(regionId) ?? [];
   }
 
   function isRegionSelected(regionId: string) {
-    const selected = tempSelection.some(loc => loc.type === "region" && loc.id === regionId);
-    console.log(`[DEBUG] isRegionSelected(${regionId}) ->`, selected);
-    return selected;
+    return selectedRegionIds.has(regionId);
   }
 
   function isMunicipalitySelected(muniId: string) {
-    const selected = tempSelection.some(loc => loc.type === "municipality" && loc.id === muniId);
-    console.log(`[DEBUG] isMunicipalitySelected(${muniId}) ->`, selected);
-    return selected;
+    return selectedMunicipalityIds.has(muniId);
   }
 
   function toggleRegion(region: RegionOption) {
-    console.log("[DEBUG] toggleRegion called for:", region);
     const munis = getMunicipalities(region.id);
 
     if (isRegionSelected(region.id)) {
-      console.log("[DEBUG] Region is already selected, removing region and its municipalities");
       tempSelection = tempSelection.filter(
         loc => loc.id !== region.id && !munis.some(m => m.id === loc.id)
       );
     } else {
-      console.log("[DEBUG] Region not selected, adding region and its municipalities");
       tempSelection = [
         ...tempSelection,
-        { id: region.id, label: region.name, type: "region" },
-        ...munis.map(m => ({ id: m.id, label: m.name, type: "municipality" }))
+        { id: region.id, label: region.name, type: "region" as const },
+        ...munis.map((m) => ({ id: m.id, label: m.name, type: "municipality" as const }))
       ];
     }
-    console.log("[DEBUG] tempSelection after toggleRegion:", tempSelection);
   }
 
   function toggleMunicipality(muni: MunicipalityOption) {
-    console.log("[DEBUG] toggleMunicipality called for:", muni);
-
     if (isMunicipalitySelected(muni.id)) {
-      console.log("[DEBUG] Municipality already selected, removing it");
       tempSelection = tempSelection.filter(loc => loc.id !== muni.id);
 
       const regionMuni = getMunicipalities(muni.regionId);
       const remaining = regionMuni.filter(m => tempSelection.some(loc => loc.id === m.id));
 
       if (remaining.length === 0) {
-        console.log("[DEBUG] No municipalities left selected for region, removing region:", muni.regionId);
         tempSelection = tempSelection.filter(loc => loc.id !== muni.regionId);
       }
     } else {
-      console.log("[DEBUG] Municipality not selected, adding it");
-      tempSelection = [...tempSelection, { id: muni.id, label: muni.name, type: "municipality" }];
+      tempSelection = [...tempSelection, { id: muni.id, label: muni.name, type: "municipality" as const }];
 
       const regionMuni = getMunicipalities(muni.regionId);
 
@@ -112,38 +120,33 @@
       );
 
       if (allSelected && !isRegionSelected(muni.regionId)) {
-        console.log("[DEBUG] All municipalities selected, adding region:", muni.regionId);
         tempSelection = [
           ...tempSelection,
           {
             id: muni.regionId,
             label: regions.find(r => r.id === muni.regionId)?.name || "",
-            type: "region"
+            type: "region" as const
           }
         ];
       }
     }
-    console.log("[DEBUG] tempSelection after toggleMunicipality:", tempSelection);
   }
 
   function save() {
-    console.log("[DEBUG] Saving selection:", tempSelection);
     onSave(tempSelection);
   }
 
   function close() {
-    console.log("[DEBUG] Closing modal");
     onClose();
   }
 
   let filteredRegions = $derived.by<FilteredRegion[]>(() =>
     regions.flatMap((region) => {
-      const regionMatch = region.name.toLowerCase().includes(search.toLowerCase());
+      const regionMunicipalities = getMunicipalities(region.id);
+      const regionMatch = region.name.toLowerCase().includes(searchValue);
       const muniMatch = getMunicipalities(region.id).filter((municipality) =>
-        municipality.name.toLowerCase().includes(search.toLowerCase())
+        municipality.name.toLowerCase().includes(searchValue)
       );
-
-      console.log(`[DEBUG] Filtering region: ${region.name}, regionMatch: ${regionMatch}, muniMatch:`, muniMatch);
 
       if (!regionMatch && muniMatch.length === 0) {
         return [];
@@ -151,7 +154,7 @@
 
       return [{
         ...region,
-        municipalities: muniMatch.length > 0 && !regionMatch ? muniMatch : getMunicipalities(region.id)
+        municipalities: muniMatch.length > 0 && !regionMatch ? muniMatch : regionMunicipalities
       }];
     })
   );

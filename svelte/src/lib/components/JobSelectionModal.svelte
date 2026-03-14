@@ -4,7 +4,7 @@
     availableTitles?: string[];
     selectedTitles?: string[];
     keywordError?: string;
-    onSave?: (titles: string[]) => void;
+    onSave?: (titles: string[]) => Promise<void> | void;
     onClose?: () => void;
     onAddKeyword?: (keyword: string, type: "include" | "exclude") => Promise<string | null> | string | null;
   }
@@ -23,6 +23,8 @@
   let titleSearch = $state("");
   let newKeyword = $state("");
   let newType = $state<"include" | "exclude">("include");
+  let saving = $state(false);
+  let normalizedTitleSearch = $derived.by(() => titleSearch.trim().toLowerCase());
 
   $effect(() => {
     if (open) {
@@ -48,18 +50,20 @@
     };
   });
 
+  const selectedTitleSet = $derived.by(() => new Set(tempSelectedTitles));
+  const allTitles = $derived.by(() => [...new Set([...tempSelectedTitles, ...availableTitles])].sort((a, b) => a.localeCompare(b)));
   const filteredTitles = $derived.by(() =>
-    [...new Set([...tempSelectedTitles, ...availableTitles])].filter((title) =>
-      title.toLowerCase().includes(titleSearch.toLowerCase())
-    )
+    allTitles.filter((title) => title.toLowerCase().includes(normalizedTitleSearch))
   );
 
   function close() {
     onClose();
   }
 
-  function save() {
-    onSave(tempSelectedTitles);
+  async function save() {
+    saving = true;
+    await onSave(tempSelectedTitles);
+    saving = false;
   }
 
   function toggleTitle(title: string) {
@@ -141,12 +145,12 @@
           {#each filteredTitles as title}
             <button
               type="button"
-              class="title-row {tempSelectedTitles.includes(title) ? 'selected' : ''}"
+              class="title-row {selectedTitleSet.has(title) ? 'selected' : ''}"
               onclick={() => toggleTitle(title)}
-              aria-pressed={tempSelectedTitles.includes(title)}
+              aria-pressed={selectedTitleSet.has(title)}
             >
               <span>{title}</span>
-              <span class="selection-indicator">{tempSelectedTitles.includes(title) ? "Selected" : "Select"}</span>
+              <span class="selection-indicator">{selectedTitleSet.has(title) ? "Selected" : "Select"}</span>
             </button>
           {/each}
         </div>
@@ -155,7 +159,9 @@
       {/if}
 
       <div class="footerbuttons">
-        <button type="button" class="primary-button" onclick={save}>Save</button>
+        <button type="button" class="primary-button" onclick={save} disabled={saving}>
+          {saving ? "Saving..." : "Save"}
+        </button>
         <button type="button" class="secondary-button" onclick={close}>Cancel</button>
       </div>
     </div>

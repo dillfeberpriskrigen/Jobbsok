@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { promptKinds, type PromptKind, type UserPrompt } from "$lib/types/prompt";
+  import { promptKinds, type PromptKind, type UserPrompt } from "$lib/types/prompt.js";
 
   interface Props {
     open?: boolean;
@@ -237,7 +237,7 @@
           id="prompt-content"
           bind:value={formState.content}
           placeholder="Paste the prompt template you want available during interview prep."
-        />
+        ></textarea>
       </div>
 
       {#if loading}

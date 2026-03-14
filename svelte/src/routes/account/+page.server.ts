@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
-import type { Actions, PageServerLoad } from './$types';
-import { auth } from '$lib/server/auth';
+import type { Actions, PageServerLoad } from './$types.js';
+import { auth } from '$lib/server/auth.js';
 import { APIError } from 'better-auth';
 
 export const load: PageServerLoad = async (event) => {
@@ -20,7 +20,7 @@ export const actions: Actions = {
 				body: {
 					email,
 					password,
-					callbackURL: '/debug'
+					callbackURL: '/'
 				}
 			});
 		} catch (error) {
@@ -31,7 +31,7 @@ export const actions: Actions = {
 			return fail(500, { mode: 'signin', message: 'Unexpected error during sign in.' });
 		}
 
-		return redirect(302, '/debug');
+		return redirect(302, '/');
 	},
 
 	signUpEmail: async (event) => {
@@ -46,7 +46,7 @@ export const actions: Actions = {
 					email,
 					password,
 					name,
-					callbackURL: '/debug'
+					callbackURL: '/'
 				}
 			});
 		} catch (error) {
@@ -57,7 +57,7 @@ export const actions: Actions = {
 			return fail(500, { mode: 'signup', message: 'Unexpected error during sign up.' });
 		}
 
-		return redirect(302, '/debug');
+		return redirect(302, '/');
 	},
 
 	signOut: async (event) => {

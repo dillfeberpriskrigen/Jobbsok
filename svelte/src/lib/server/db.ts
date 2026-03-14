@@ -3,8 +3,8 @@ import { sql } from 'drizzle-orm';
 
 import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
-import * as jobSchema from './db/jobSchema';
-import * as authSchema from './db/authSchema';
+import * as jobSchema from './db/jobSchema.js';
+import * as authSchema from './db/authSchema.js';
 import { env } from '$env/dynamic/private';
 
 if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not set');

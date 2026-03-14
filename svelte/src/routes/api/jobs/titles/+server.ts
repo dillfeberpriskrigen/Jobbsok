@@ -1,8 +1,8 @@
-import { jobDb } from '$lib/server/db';
-import { occupationNames } from '$lib/server/db/jobSchema';
+import { jobDb } from '$lib/server/db.js';
+import { occupationNames } from '$lib/server/db/jobSchema.js';
 import { json } from '@sveltejs/kit';
 import { asc, isNotNull, sql } from 'drizzle-orm';
-import type { RequestHandler } from './$types';
+import type { RequestHandler } from './$types.js';
 
 export const GET: RequestHandler = async ({ url }) => {
   const query = url.searchParams.get('q')?.trim() ?? '';

@@ -1,14 +1,14 @@
 <script lang="ts">
-  import type { UserPrompt } from "$lib/types/prompt";
+  import type { UserPrompt } from "$lib/types/prompt.js";
 
   interface Job {
     id: string;
-    headline: string;
-    employer_name: string;
-    municipality: string;
+    headline: string | null;
+    employer_name: string | null;
+    municipality: string | null;
     application_deadline_simple?: string;
-    application_deadline?: string;
-    description: string;
+    application_deadline?: string | Date | null;
+    description: string | null;
     webpage_url?: string | null;
   }
 
@@ -72,8 +72,10 @@
   <div
     class="modal-content"
     role="dialog"
+    tabindex="-1"
     aria-modal="true"
     onclick={(event) => event.stopPropagation()}
+    onkeydown={(event) => event.stopPropagation()}
   >
     <button type="button" class="close-btn" aria-label="Close" onclick={close}>×</button>
 
